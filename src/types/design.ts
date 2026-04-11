@@ -5,11 +5,13 @@ export interface Material {
 }
 
 export type DepthType = 'face' | 'relief' | 'through';
+export type CutStrategy = 'pocket' | 'outline';
 
 export interface DepthAssignment {
   pathId: string;
   type: DepthType;
   depth: number; // mm: 0 for face, user value for relief, material thickness for through
+  strategy: CutStrategy; // pocket = clear all interior, outline = trace boundary only
 }
 
 export interface SvgPathData {

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { ShapeGeometry, DoubleSide } from 'three';
+import { DoubleSide } from 'three';
 import { useDesignStore } from '../../store/designStore';
 import { computeSvgTransform } from '../../svg/svgScaler';
 

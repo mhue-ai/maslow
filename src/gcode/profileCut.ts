@@ -1,4 +1,4 @@
-import type { Shape, Vector2 } from 'three';
+import type { Shape } from 'three';
 import type { ToolConfig } from '../types/design';
 import { linearMove, rapid, rapidZ, plunge } from './gcodeWriter';
 import { calculateDepthPasses } from './depthPasses';
@@ -49,7 +49,6 @@ export function generateProfileGcode(
     lines.push(plunge(z, tool.plungeRate));
 
     // Follow the path
-    const totalLength = pathLength(points);
     let accumulated = 0;
 
     for (let i = 1; i < points.length; i++) {

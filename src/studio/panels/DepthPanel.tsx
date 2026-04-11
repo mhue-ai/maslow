@@ -1,5 +1,5 @@
 import { useDesignStore } from '../../store/designStore';
-import type { DepthType } from '../../types/design';
+import type { DepthType, CutStrategy } from '../../types/design';
 
 const DEPTH_COLORS: Record<string, string> = {
   face: '#44cc44',
@@ -18,6 +18,7 @@ export function DepthPanel() {
   const paths = useDesignStore((s) => s.paths);
   const depthAssignments = useDesignStore((s) => s.depthAssignments);
   const setDepth = useDesignStore((s) => s.setDepth);
+  const setStrategy = useDesignStore((s) => s.setStrategy);
   const selectedPathId = useDesignStore((s) => s.selectedPathId);
   const selectPath = useDesignStore((s) => s.selectPath);
   const material = useDesignStore((s) => s.material);
@@ -53,7 +54,9 @@ export function DepthPanel() {
               <div className="path-swatch" style={{ background: color }} />
               <span style={{ flex: 1 }}>{path.data.name}</span>
               <span style={{ fontSize: 10, color: '#666' }}>
-                {assignment ? DEPTH_LABELS[assignment.type] : '—'}
+                {assignment
+                  ? `${DEPTH_LABELS[assignment.type]}${assignment.type !== 'face' ? ` · ${assignment.strategy === 'pocket' ? 'Pkt' : 'Out'}` : ''}`
+                  : '—'}
               </span>
             </div>
           );
@@ -75,6 +78,34 @@ export function DepthPanel() {
               </button>
             ))}
           </div>
+
+          {/* Cut strategy: pocket vs outline */}
+          {selectedAssignment && selectedAssignment.type !== 'face' && (
+            <div style={{ marginTop: 8 }}>
+              <label style={{ fontSize: 11, color: '#666', marginBottom: 4, display: 'block' }}>
+                Cut approach
+              </label>
+              <div className="depth-controls">
+                {(['pocket', 'outline'] as CutStrategy[]).map((strat) => (
+                  <button
+                    key={strat}
+                    className={`btn btn-sm depth-btn ${selectedAssignment.strategy === strat ? 'active' : ''}`}
+                    onClick={() => setStrategy(selectedPathId, strat)}
+                    title={strat === 'pocket'
+                      ? 'Clear all material inside the path boundary'
+                      : 'Cut along the path outline only'}
+                  >
+                    {strat === 'pocket' ? 'Pocket' : 'Outline'}
+                  </button>
+                ))}
+              </div>
+              <p style={{ fontSize: 10, color: '#555', marginTop: 4 }}>
+                {selectedAssignment.strategy === 'pocket'
+                  ? 'Clears all material inside the shape'
+                  : 'Traces the path boundary only'}
+              </p>
+            </div>
+          )}
 
           {selectedAssignment?.type === 'relief' && (
             <label style={{ marginTop: 8 }}>

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Shape } from 'three';
-import type { Material, DepthAssignment, ToolConfig, SvgPathData } from '../types/design';
+import type { Material, DepthAssignment, ToolConfig, SvgPathData, CutStrategy } from '../types/design';
 import { DEFAULT_MATERIAL, DEFAULT_TOOL_CONFIG } from '../types/design';
 
 interface ParsedPath {
@@ -25,7 +25,8 @@ interface DesignState {
 
   // Depth assignments
   depthAssignments: Map<string, DepthAssignment>;
-  setDepth: (pathId: string, type: DepthAssignment['type'], depth?: number) => void;
+  setDepth: (pathId: string, type: DepthAssignment['type'], depth?: number, strategy?: CutStrategy) => void;
+  setStrategy: (pathId: string, strategy: CutStrategy) => void;
 
   // Tool config
   toolConfig: ToolConfig;
@@ -40,7 +41,7 @@ interface DesignState {
   toggleCutPreview: () => void;
 }
 
-export const useDesignStore = create<DesignState>((set, get) => ({
+export const useDesignStore = create<DesignState>((set) => ({
   material: DEFAULT_MATERIAL,
   setMaterial: (m) => set((s) => ({ material: { ...s.material, ...m } })),
 
@@ -53,11 +54,22 @@ export const useDesignStore = create<DesignState>((set, get) => ({
   setSvgBounds: (b) => set({ svgBounds: b }),
 
   depthAssignments: new Map(),
-  setDepth: (pathId, type, depth) =>
+  setDepth: (pathId, type, depth, strategy) =>
     set((s) => {
       const next = new Map(s.depthAssignments);
+      const existing = next.get(pathId);
       const d = type === 'face' ? 0 : type === 'through' ? s.material.thickness : (depth ?? 5);
-      next.set(pathId, { pathId, type, depth: d });
+      const strat = strategy ?? existing?.strategy ?? (type === 'through' ? 'outline' : 'pocket');
+      next.set(pathId, { pathId, type, depth: d, strategy: strat });
+      return { depthAssignments: next };
+    }),
+  setStrategy: (pathId, strategy) =>
+    set((s) => {
+      const next = new Map(s.depthAssignments);
+      const existing = next.get(pathId);
+      if (existing) {
+        next.set(pathId, { ...existing, strategy });
+      }
       return { depthAssignments: next };
     }),
 
