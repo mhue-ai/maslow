@@ -35,6 +35,7 @@ export function CutPreview() {
             key={`cut-${path.data.id}-${shapeIdx}`}
             position={[transform.offsetX, transform.offsetY, topZ]}
             scale={[transform.scaleX, transform.scaleY, 1]}
+            rotation={[0, 0, transform.rotation]}
           >
             {/* Pocket floor at the bottom of the cut */}
             {assignment.type === 'relief' && (

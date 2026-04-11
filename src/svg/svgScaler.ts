@@ -5,6 +5,7 @@ export interface SvgTransform {
   scaleY: number;
   offsetX: number;
   offsetY: number;
+  rotation: number; // radians
 }
 
 /**
@@ -54,7 +55,6 @@ export function computeSvgTransform(
     offsetX += material.width / 2;
     offsetY -= material.height / 2;
   }
-  // 'center' needs no shift
 
   // Apply user offset override (in mm)
   if (override) {
@@ -62,10 +62,43 @@ export function computeSvgTransform(
     offsetY += override.offsetY;
   }
 
+  // Rotation in radians
+  const rotation = override ? (override.rotation * Math.PI) / 180 : 0;
+
   return {
     scaleX: finalScaleX,
     scaleY: finalScaleY,
     offsetX,
     offsetY,
+    rotation,
   };
+}
+
+/**
+ * Apply the full SVG transform to a point (for G-code generation).
+ * Applies scale, then rotation, then offset.
+ */
+export function transformPoint(
+  px: number, py: number,
+  t: SvgTransform
+): { x: number; y: number } {
+  // Scale
+  let x = px * t.scaleX;
+  let y = py * t.scaleY;
+
+  // Rotate around origin
+  if (t.rotation !== 0) {
+    const cos = Math.cos(t.rotation);
+    const sin = Math.sin(t.rotation);
+    const rx = x * cos - y * sin;
+    const ry = x * sin + y * cos;
+    x = rx;
+    y = ry;
+  }
+
+  // Translate
+  x += t.offsetX;
+  y += t.offsetY;
+
+  return { x, y };
 }

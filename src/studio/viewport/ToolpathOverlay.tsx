@@ -23,35 +23,40 @@ export function ToolpathOverlay() {
 
     for (const seg of segments) {
       const verts = seg.type === 'rapid' ? rapidVerts : cutVerts;
-      // G-code Z is relative to material surface (0 = top, negative = into material)
-      // 3D scene Z: top of material = thickness/2
       verts.push(seg.from.x, seg.from.y, topZ + seg.from.z);
       verts.push(seg.to.x, seg.to.y, topZ + seg.to.z);
     }
 
-    const rGeo = new BufferGeometry();
+    // Only create geometry if we have vertices — empty BufferGeometry crashes renderer
+    let rGeo: BufferGeometry | null = null;
     if (rapidVerts.length > 0) {
+      rGeo = new BufferGeometry();
       rGeo.setAttribute('position', new Float32BufferAttribute(rapidVerts, 3));
     }
 
-    const cGeo = new BufferGeometry();
+    let cGeo: BufferGeometry | null = null;
     if (cutVerts.length > 0) {
+      cGeo = new BufferGeometry();
       cGeo.setAttribute('position', new Float32BufferAttribute(cutVerts, 3));
     }
 
     return { rapidGeo: rGeo, cutGeo: cGeo };
   }, [gcode, material.thickness]);
 
-  if (!showToolpaths || !gcode || !rapidGeo || !cutGeo) return null;
+  if (!showToolpaths || !gcode) return null;
 
   return (
     <group>
-      <lineSegments geometry={rapidGeo}>
-        <lineBasicMaterial color="#4488ff" opacity={0.4} transparent linewidth={1} />
-      </lineSegments>
-      <lineSegments geometry={cutGeo}>
-        <lineBasicMaterial color="#ff4444" opacity={0.8} transparent linewidth={1} />
-      </lineSegments>
+      {rapidGeo && (
+        <lineSegments geometry={rapidGeo}>
+          <lineBasicMaterial color="#4488ff" opacity={0.4} transparent linewidth={1} />
+        </lineSegments>
+      )}
+      {cutGeo && (
+        <lineSegments geometry={cutGeo}>
+          <lineBasicMaterial color="#ff4444" opacity={0.8} transparent linewidth={1} />
+        </lineSegments>
+      )}
     </group>
   );
 }

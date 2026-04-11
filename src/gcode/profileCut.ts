@@ -1,5 +1,7 @@
 import type { Shape } from 'three';
 import type { ToolConfig, ProfileOffset } from '../types/design';
+import type { SvgTransform } from '../svg/svgScaler';
+import { transformPoint } from '../svg/svgScaler';
 import { linearMove, rapid, rapidZ, plunge } from './gcodeWriter';
 import { calculateDepthPasses } from './depthPasses';
 
@@ -17,18 +19,15 @@ export function generateProfileGcode(
   shape: Shape,
   totalDepth: number,
   tool: ToolConfig,
-  transform: { scaleX: number; scaleY: number; offsetX: number; offsetY: number },
+  transform: SvgTransform,
   withTabs: boolean,
   profileOffset: ProfileOffset = 'none'
 ): string[] {
   const lines: string[] = [];
 
-  // Get outline points with high resolution
+  // Get outline points with high resolution, apply full transform (scale + rotation + offset)
   const rawPoints = shape.getPoints(128);
-  let points: Point[] = rawPoints.map((p) => ({
-    x: p.x * transform.scaleX + transform.offsetX,
-    y: p.y * transform.scaleY + transform.offsetY,
-  }));
+  let points: Point[] = rawPoints.map((p) => transformPoint(p.x, p.y, transform));
 
   if (points.length < 2) return lines;
 
@@ -153,6 +152,15 @@ function offsetPolygon(points: Point[], distance: number): Point[] {
 
     // Average normal at vertex
     const avg = normalize({ x: n1.x + n2.x, y: n1.y + n2.y });
+
+    // Degenerate case: collinear or zero-length edges — fall back to edge normal
+    if (avg.x === 0 && avg.y === 0) {
+      result.push({
+        x: curr.x + n1.x * distance,
+        y: curr.y + n1.y * distance,
+      });
+      continue;
+    }
 
     // Handle sharp corners: limit offset to avoid self-intersection
     const dot = n1.x * avg.x + n1.y * avg.y;

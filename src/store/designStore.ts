@@ -192,8 +192,7 @@ export const useDesignStore = create<DesignState>((set, get) => ({
     }),
   redo: () =>
     set((s) => {
-      if (s.historyIndex >= s.history.length - 1) return s;
-      const nextIdx = s.historyIndex + 2;
+      const nextIdx = s.historyIndex + 1;
       if (nextIdx >= s.history.length) return s;
       const entry = s.history[nextIdx];
       return {

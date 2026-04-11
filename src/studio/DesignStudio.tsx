@@ -59,7 +59,7 @@ export function DesignStudio() {
           <button
             className="btn btn-sm"
             onClick={redo}
-            disabled={historyIndex >= historyLength - 1}
+            disabled={historyIndex >= historyLength - 1 || historyLength === 0}
             title="Redo (Ctrl+Y)"
             style={{ flex: 1 }}
           >

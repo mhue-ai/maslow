@@ -1,5 +1,7 @@
-import type { Shape, Vector2 } from 'three';
+import type { Shape } from 'three';
 import type { ToolConfig } from '../types/design';
+import type { SvgTransform } from '../svg/svgScaler';
+import { transformPoint } from '../svg/svgScaler';
 import { linearMove, rapid, rapidZ, plunge } from './gcodeWriter';
 import { calculateDepthPasses } from './depthPasses';
 
@@ -16,14 +18,14 @@ export function generatePocketGcode(
   shape: Shape,
   totalDepth: number,
   tool: ToolConfig,
-  transform: { scaleX: number; scaleY: number; offsetX: number; offsetY: number }
+  transform: SvgTransform
 ): string[] {
   const lines: string[] = [];
   const stepover = tool.bitDiameter * tool.stepover;
 
-  // Get shape outline points
-  const points = shape.getPoints(64);
-  const polygon = points.map((p) => transformPoint(p, transform));
+  // Get shape outline points, apply full transform (scale + rotation + offset)
+  const rawPoints = shape.getPoints(64);
+  const polygon: Point[] = rawPoints.map((p) => transformPoint(p.x, p.y, transform));
 
   // Compute bounding box of transformed polygon
   const bbox = computeBBox(polygon);
@@ -37,16 +39,16 @@ export function generatePocketGcode(
     lines.push(`; Pass at Z=${z.toFixed(3)}`);
     lines.push(rapidZ(tool.safeHeight));
 
-    // Generate scan lines
-    let direction = 1; // alternating direction for zig-zag
+    // Generate scan lines — retract only between non-adjacent segments
+    let direction = 1;
+    let lastY: number | null = null;
+
     for (let y = bbox.minY + stepover / 2; y <= bbox.maxY - stepover / 2; y += stepover) {
       const intersections = scanLineIntersections(polygon, y);
       if (intersections.length < 2) continue;
 
-      // Sort intersections by X
       intersections.sort((a, b) => a - b);
 
-      // Process pairs of intersections (inside/outside)
       for (let i = 0; i < intersections.length - 1; i += 2) {
         const x1 = intersections[i] + tool.bitDiameter / 2;
         const x2 = intersections[i + 1] - tool.bitDiameter / 2;
@@ -55,10 +57,18 @@ export function generatePocketGcode(
         const startX = direction > 0 ? x1 : x2;
         const endX = direction > 0 ? x2 : x1;
 
-        lines.push(rapidZ(tool.safeHeight));
-        lines.push(rapid(startX, y));
-        lines.push(plunge(z, tool.plungeRate));
+        // Only retract if we need to reposition (not continuous zig-zag)
+        if (lastY === null || Math.abs(y - lastY) > stepover * 1.5) {
+          lines.push(rapidZ(tool.safeHeight));
+          lines.push(rapid(startX, y));
+          lines.push(plunge(z, tool.plungeRate));
+        } else {
+          // Continue cutting to next scan line
+          lines.push(linearMove(startX, y, tool.feedRate));
+        }
+
         lines.push(linearMove(endX, y, tool.feedRate));
+        lastY = y;
       }
 
       direction *= -1;
@@ -67,16 +77,6 @@ export function generatePocketGcode(
 
   lines.push(rapidZ(tool.safeHeight));
   return lines;
-}
-
-function transformPoint(
-  p: Vector2,
-  t: { scaleX: number; scaleY: number; offsetX: number; offsetY: number }
-): Point {
-  return {
-    x: p.x * t.scaleX + t.offsetX,
-    y: p.y * t.scaleY + t.offsetY,
-  };
 }
 
 function computeBBox(points: Point[]): { minX: number; maxX: number; minY: number; maxY: number } {
@@ -92,6 +92,7 @@ function computeBBox(points: Point[]): { minX: number; maxX: number; minY: numbe
 
 /**
  * Find X intersections of a horizontal scan line at Y with a polygon.
+ * Uses strict inequality on one side to avoid duplicate vertex intersections.
  */
 function scanLineIntersections(polygon: Point[], y: number): number[] {
   const intersections: number[] = [];
@@ -101,8 +102,7 @@ function scanLineIntersections(polygon: Point[], y: number): number[] {
     const a = polygon[i];
     const b = polygon[(i + 1) % n];
 
-    // Check if the scan line crosses this edge
-    if ((a.y <= y && b.y > y) || (b.y <= y && a.y > y)) {
+    if ((a.y < y && b.y >= y) || (b.y < y && a.y >= y)) {
       const t = (y - a.y) / (b.y - a.y);
       intersections.push(a.x + t * (b.x - a.x));
     }
