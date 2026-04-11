@@ -70,9 +70,9 @@ export const DEFAULT_TOOL_CONFIG: ToolConfig = {
 };
 
 export const DEFAULT_MATERIAL: Material = {
-  width: 600,
-  height: 200,
-  thickness: 19,
+  width: 1220,  // 4' wide (landscape)
+  height: 610,  // 2' tall
+  thickness: 19, // 3/4"
 };
 
 /** A positioned copy of the design on the material (for tiling/nesting) */
@@ -94,10 +94,24 @@ export interface MaterialPreset {
 }
 
 export const BUILT_IN_PRESETS: MaterialPreset[] = [
-  { name: '3/4" Plywood (4x8)', width: 1220, height: 2440, thickness: 19, feedRate: 750, plungeRate: 250, rpm: 18000, depthPerPass: 3 },
-  { name: '3/4" Plywood (2x4)', width: 610, height: 1220, thickness: 19, feedRate: 750, plungeRate: 250, rpm: 18000, depthPerPass: 3 },
-  { name: '1/2" MDF', width: 1220, height: 2440, thickness: 12.7, feedRate: 625, plungeRate: 200, rpm: 18000, depthPerPass: 2.5 },
-  { name: '3/4" Hardwood', width: 600, height: 300, thickness: 19, feedRate: 500, plungeRate: 150, rpm: 14000, depthPerPass: 1.5 },
-  { name: '1/4" Acrylic', width: 600, height: 300, thickness: 6.35, feedRate: 600, plungeRate: 150, rpm: 16000, depthPerPass: 1.5 },
-  { name: 'PeopleMover Sign', width: 600, height: 200, thickness: 19, feedRate: 750, plungeRate: 250, rpm: 18000, depthPerPass: 3 },
+  // Plywood — standard thicknesses, all landscape (width > height)
+  { name: '1/8" Plywood (4x8)',  width: 2440, height: 1220, thickness: 3.2,  feedRate: 1000, plungeRate: 300, rpm: 18000, depthPerPass: 1.5 },
+  { name: '1/4" Plywood (4x8)',  width: 2440, height: 1220, thickness: 6.35, feedRate: 900,  plungeRate: 280, rpm: 18000, depthPerPass: 2 },
+  { name: '5/16" Plywood (4x8)', width: 2440, height: 1220, thickness: 8,    feedRate: 850,  plungeRate: 270, rpm: 18000, depthPerPass: 2.5 },
+  { name: '3/8" Plywood (4x8)',  width: 2440, height: 1220, thickness: 9.5,  feedRate: 800,  plungeRate: 260, rpm: 18000, depthPerPass: 2.5 },
+  { name: '1/2" Plywood (4x8)',  width: 2440, height: 1220, thickness: 12.7, feedRate: 750,  plungeRate: 250, rpm: 18000, depthPerPass: 3 },
+  { name: '5/8" Plywood (4x8)',  width: 2440, height: 1220, thickness: 16,   feedRate: 750,  plungeRate: 250, rpm: 18000, depthPerPass: 3 },
+  { name: '3/4" Plywood (4x8)',  width: 2440, height: 1220, thickness: 19,   feedRate: 750,  plungeRate: 250, rpm: 18000, depthPerPass: 3 },
+  { name: '3/4" Plywood (4x4)',  width: 1220, height: 1220, thickness: 19,   feedRate: 750,  plungeRate: 250, rpm: 18000, depthPerPass: 3 },
+  { name: '3/4" Plywood (2x4)',  width: 1220, height: 610,  thickness: 19,   feedRate: 750,  plungeRate: 250, rpm: 18000, depthPerPass: 3 },
+  // MDF
+  { name: '1/4" MDF (4x8)',      width: 2440, height: 1220, thickness: 6.35, feedRate: 625,  plungeRate: 200, rpm: 18000, depthPerPass: 2 },
+  { name: '1/2" MDF (4x8)',      width: 2440, height: 1220, thickness: 12.7, feedRate: 625,  plungeRate: 200, rpm: 18000, depthPerPass: 2.5 },
+  { name: '3/4" MDF (4x8)',      width: 2440, height: 1220, thickness: 19,   feedRate: 625,  plungeRate: 200, rpm: 18000, depthPerPass: 2.5 },
+  // Hardwood
+  { name: '1/2" Hardwood',       width: 1220, height: 610,  thickness: 12.7, feedRate: 500,  plungeRate: 150, rpm: 14000, depthPerPass: 1.5 },
+  { name: '3/4" Hardwood',       width: 1220, height: 610,  thickness: 19,   feedRate: 500,  plungeRate: 150, rpm: 14000, depthPerPass: 1.5 },
+  // Acrylic
+  { name: '1/8" Acrylic',        width: 1220, height: 610,  thickness: 3.2,  feedRate: 600,  plungeRate: 150, rpm: 16000, depthPerPass: 1 },
+  { name: '1/4" Acrylic',        width: 1220, height: 610,  thickness: 6.35, feedRate: 600,  plungeRate: 150, rpm: 16000, depthPerPass: 1.5 },
 ];
