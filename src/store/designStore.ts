@@ -19,6 +19,10 @@ interface DesignState {
   selectedPathId: string | null;
   selectPath: (id: string | null) => void;
 
+  // Raw SVG text (for project save/load — Shape objects aren't serializable)
+  svgText: string | null;
+  setSvgText: (t: string | null) => void;
+
   // SVG bounding box (from parsed SVG)
   svgBounds: { width: number; height: number } | null;
   setSvgBounds: (b: { width: number; height: number } | null) => void;
@@ -49,6 +53,9 @@ export const useDesignStore = create<DesignState>((set) => ({
   setPaths: (p) => set({ paths: p }),
   selectedPathId: null,
   selectPath: (id) => set({ selectedPathId: id }),
+
+  svgText: null,
+  setSvgText: (t) => set({ svgText: t }),
 
   svgBounds: null,
   setSvgBounds: (b) => set({ svgBounds: b }),
