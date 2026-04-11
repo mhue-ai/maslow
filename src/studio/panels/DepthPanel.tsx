@@ -72,7 +72,6 @@ export function DepthPanel() {
               key={id}
               className={`path-item ${isSelected ? 'selected' : ''}`}
               onClick={() => selectPath(id)}
-              onMouseEnter={() => selectPath(id)}
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginRight: 4 }}>
                 <button

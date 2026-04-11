@@ -197,30 +197,36 @@ function enhanceSvg(
 
     const assignment = depthAssignments.get(pathId);
     const isSelected = selectedPathId === pathId;
+    const depthType = assignment?.type ?? 'face';
     const styles: string[] = ['cursor: pointer'];
+    const filters: string[] = [];
 
-    if (assignment && assignment.type === 'relief') {
-      styles.push('filter: drop-shadow(0 0 4px #4488ff)');
+    // Depth type coloring — only change colors for non-face paths
+    if (depthType === 'relief') {
+      filters.push('drop-shadow(0 0 3px #4488ff)');
       styles.push('opacity: 0.85');
       const fill = el.getAttribute('fill');
       if (fill && fill !== 'none') el.setAttribute('fill', '#2255aa');
       const stroke = el.getAttribute('stroke');
       if (stroke && stroke !== 'none') el.setAttribute('stroke', '#4488ff');
-    } else if (assignment && assignment.type === 'through') {
-      styles.push('filter: drop-shadow(0 0 4px #ff4444)');
+    } else if (depthType === 'through') {
+      filters.push('drop-shadow(0 0 3px #ff4444)');
       styles.push('opacity: 0.85');
       const fill = el.getAttribute('fill');
       if (fill && fill !== 'none') el.setAttribute('fill', '#aa2222');
       const stroke = el.getAttribute('stroke');
       if (stroke && stroke !== 'none') el.setAttribute('stroke', '#ff4444');
     }
+    // Face type: leave original SVG colors untouched
 
+    // Selection highlight — subtle glow only, never change stroke color
     if (isSelected) {
-      // Strong highlight: bright glow + thicker stroke for selected element
-      styles.push('filter: drop-shadow(0 0 8px #ffcc00) drop-shadow(0 0 16px #ffcc00)');
-      styles.push('stroke: #ffcc00');
-      styles.push('stroke-width: 4');
+      filters.push('drop-shadow(0 0 6px #ffffff) drop-shadow(0 0 12px #4488ff)');
       styles.push('opacity: 1');
+    }
+
+    if (filters.length > 0) {
+      styles.push(`filter: ${filters.join(' ')}`);
     }
 
     el.setAttribute('style', styles.join('; '));
