@@ -100,7 +100,24 @@ export const useDesignStore = create<DesignState>((set, get) => ({
   },
 
   paths: [],
-  setPaths: (p) => set({ paths: p, operationOrder: p.map((pp) => pp.data.id) }),
+  setPaths: (p) => {
+    // Auto-assign all paths to "face" by default
+    const assignments = new Map<string, DepthAssignment>();
+    for (const path of p) {
+      assignments.set(path.data.id, {
+        pathId: path.data.id,
+        type: 'face',
+        depth: 0,
+        strategy: 'pocket',
+        profileOffset: 'none',
+      });
+    }
+    set({
+      paths: p,
+      operationOrder: p.map((pp) => pp.data.id),
+      depthAssignments: assignments,
+    });
+  },
   selectedPathId: null,
   selectPath: (id) => set({ selectedPathId: id }),
 

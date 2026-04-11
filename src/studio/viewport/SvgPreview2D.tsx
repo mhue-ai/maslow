@@ -2,11 +2,8 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { useDesignStore } from '../../store/designStore';
 
 /**
- * Native 2D SVG preview — renders the SVG exactly as a browser would,
- * with clickable elements for depth assignment.
- *
- * This replaces the Three.js ShapeGeometry approach for the design view,
- * which can't render text, handles strokes poorly, and creates noisy shapes.
+ * Native 2D SVG preview with zoom/pan and clickable depth assignment.
+ * Renders the SVG exactly as a browser would — text, fonts, strokes, fills.
  */
 export function SvgPreview2D() {
   const svgText = useDesignStore((s) => s.svgText);
@@ -20,28 +17,27 @@ export function SvgPreview2D() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [svgDoc, setSvgDoc] = useState<string | null>(null);
 
-  // Process SVG text: inject interactivity styles and IDs
-  useEffect(() => {
-    if (!svgText) {
-      setSvgDoc(null);
-      return;
-    }
+  // Zoom/pan state
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
-    // Parse the SVG and enhance it for interactivity
-    const enhanced = enhanceSvg(svgText, depthAssignments, selectedPathId);
-    setSvgDoc(enhanced);
+  // Process SVG text with interactivity enhancements
+  useEffect(() => {
+    if (!svgText) { setSvgDoc(null); return; }
+    setSvgDoc(enhanceSvg(svgText, depthAssignments, selectedPathId));
   }, [svgText, depthAssignments, selectedPathId]);
 
-  // Handle clicks on SVG elements
+  // Handle clicks on SVG elements — toggle pocket/through
   const handleClick = useCallback((e: React.MouseEvent) => {
-    const target = e.target as SVGElement;
+    if (isPanning) return; // Don't toggle during pan
 
-    // Walk up to find the nearest element with a data-path-index
+    const target = e.target as Element;
     let el: Element | null = target;
     while (el && !(el as HTMLElement).dataset?.pathIndex) {
       el = el.parentElement;
     }
-
     if (!el) return;
     const pathIndex = (el as HTMLElement).dataset.pathIndex;
     if (!pathIndex) return;
@@ -57,18 +53,40 @@ export function SvgPreview2D() {
     } else {
       setDepth(pathId, currentType === 'relief' ? 'face' : 'relief');
     }
-  }, [depthAssignments, selectPath, setDepth]);
+  }, [depthAssignments, selectPath, setDepth, isPanning]);
+
+  // Mouse wheel zoom
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    setZoom((z) => Math.max(0.2, Math.min(10, z * delta)));
+  }, []);
+
+  // Middle-click or Ctrl+click pan
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button === 1 || (e.button === 0 && e.ctrlKey)) {
+      e.preventDefault();
+      setIsPanning(true);
+      panStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+    }
+  }, [pan]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isPanning) return;
+    const dx = e.clientX - panStart.current.x;
+    const dy = e.clientY - panStart.current.y;
+    setPan({ x: panStart.current.panX + dx, y: panStart.current.panY + dy });
+  }, [isPanning]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsPanning(false);
+  }, []);
+
+  const resetView = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
 
   if (!svgText) {
     return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100%',
-        color: '#555',
-        fontSize: 14,
-      }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#555', fontSize: 14 }}>
         Import an SVG to see the design
       </div>
     );
@@ -78,58 +96,96 @@ export function SvgPreview2D() {
     <div
       ref={containerRef}
       onClick={handleClick}
+      onWheel={handleWheel}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
       style={{
         width: '100%',
         height: '100%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        overflow: 'hidden',
         background: '#1a1a2e',
-        overflow: 'auto',
-        padding: 20,
-        cursor: 'pointer',
+        cursor: isPanning ? 'grabbing' : 'default',
+        position: 'relative',
       }}
     >
-      <div
-        style={{
-          background: '#c4a66a', // Material color (wood)
-          padding: 0,
-          position: 'relative',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-          // Scale SVG to fit while showing material bounds
-          maxWidth: '100%',
-          maxHeight: '100%',
-          aspectRatio: `${material.width} / ${material.height}`,
-          transform: `scale(${svgTransformOverride.scale}) rotate(${svgTransformOverride.rotation}deg) scaleX(${svgTransformOverride.mirrorX ? -1 : 1}) scaleY(${svgTransformOverride.mirrorY ? -1 : 1})`,
-        }}
-        dangerouslySetInnerHTML={svgDoc ? { __html: svgDoc } : undefined}
-      />
+      {/* Zoom controls */}
+      <div style={{
+        position: 'absolute', top: 8, right: 8, zIndex: 10,
+        display: 'flex', gap: 4, alignItems: 'center',
+      }}>
+        <button className="btn btn-sm" onClick={() => setZoom((z) => Math.min(10, z * 1.25))}>+</button>
+        <span style={{ fontSize: 11, color: '#888', minWidth: 40, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
+        <button className="btn btn-sm" onClick={() => setZoom((z) => Math.max(0.2, z * 0.8))}>-</button>
+        <button className="btn btn-sm" onClick={resetView}>Fit</button>
+      </div>
+
+      {/* Hint */}
+      <div style={{
+        position: 'absolute', bottom: 8, left: 8, zIndex: 10,
+        fontSize: 10, color: '#555',
+      }}>
+        Scroll = zoom. Ctrl+drag = pan. Click = pocket. Shift+click = through.
+      </div>
+
+      {/* Material surface with SVG */}
+      <div style={{
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+        transformOrigin: 'center center',
+        transition: isPanning ? 'none' : 'transform 0.1s ease-out',
+      }}>
+        <div
+          style={{
+            background: '#c4a66a',
+            width: `${Math.min(800, material.width * 0.5)}px`,
+            aspectRatio: `${material.width} / ${material.height}`,
+            position: 'relative',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+            border: '2px solid #8a7a4a',
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              transform: `rotate(${svgTransformOverride.rotation}deg) scaleX(${svgTransformOverride.mirrorX ? -1 : 1}) scaleY(${svgTransformOverride.mirrorY ? -1 : 1})`,
+            }}
+            dangerouslySetInnerHTML={svgDoc ? { __html: svgDoc } : undefined}
+          />
+          {/* Material dimensions label */}
+          <div style={{
+            position: 'absolute', bottom: -20, left: 0, right: 0,
+            textAlign: 'center', fontSize: 10, color: '#666',
+          }}>
+            {material.width} x {material.height} x {material.thickness} mm
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
 /**
- * Enhance the SVG markup for interactive depth assignment.
- * Adds data-path-index attributes to clickable elements and applies
- * visual styles based on depth assignments.
+ * Enhance SVG markup for interactive depth assignment.
  */
 function enhanceSvg(
   svgText: string,
   depthAssignments: Map<string, any>,
   selectedPathId: string | null
 ): string {
-  // Parse as DOM
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgText, 'image/svg+xml');
   const svg = doc.querySelector('svg');
   if (!svg) return svgText;
 
-  // Make SVG fill its container
   svg.setAttribute('width', '100%');
   svg.setAttribute('height', '100%');
   svg.style.display = 'block';
 
-  // Find all shape elements and add interactivity
   const shapeElements = svg.querySelectorAll(
     'path, polygon, polyline, rect, circle, ellipse, line, text'
   );
@@ -139,48 +195,37 @@ function enhanceSvg(
     const pathId = `path-${index}`;
     el.setAttribute('data-path-index', String(index));
 
-    // Apply depth-based styling
     const assignment = depthAssignments.get(pathId);
     const isSelected = selectedPathId === pathId;
+    const styles: string[] = ['cursor: pointer'];
 
-    if (assignment) {
-      if (assignment.type === 'relief') {
-        // Blue overlay for pocketed areas
-        el.setAttribute('style',
-          (el.getAttribute('style') || '') +
-          '; filter: drop-shadow(0 0 3px #4488ff); opacity: 0.85;'
-        );
-        if (el.getAttribute('fill') && el.getAttribute('fill') !== 'none') {
-          el.setAttribute('fill', '#2255aa');
-        }
-      } else if (assignment.type === 'through') {
-        // Red overlay for through-cut areas
-        el.setAttribute('style',
-          (el.getAttribute('style') || '') +
-          '; filter: drop-shadow(0 0 3px #ff4444); opacity: 0.85;'
-        );
-        if (el.getAttribute('fill') && el.getAttribute('fill') !== 'none') {
-          el.setAttribute('fill', '#aa2222');
-        }
-      }
+    if (assignment && assignment.type === 'relief') {
+      styles.push('filter: drop-shadow(0 0 4px #4488ff)');
+      styles.push('opacity: 0.85');
+      const fill = el.getAttribute('fill');
+      if (fill && fill !== 'none') el.setAttribute('fill', '#2255aa');
+      const stroke = el.getAttribute('stroke');
+      if (stroke && stroke !== 'none') el.setAttribute('stroke', '#4488ff');
+    } else if (assignment && assignment.type === 'through') {
+      styles.push('filter: drop-shadow(0 0 4px #ff4444)');
+      styles.push('opacity: 0.85');
+      const fill = el.getAttribute('fill');
+      if (fill && fill !== 'none') el.setAttribute('fill', '#aa2222');
+      const stroke = el.getAttribute('stroke');
+      if (stroke && stroke !== 'none') el.setAttribute('stroke', '#ff4444');
     }
 
     if (isSelected) {
-      el.setAttribute('style',
-        (el.getAttribute('style') || '') +
-        '; filter: drop-shadow(0 0 6px #ffffff); stroke-width: 3;'
-      );
+      // Strong highlight: bright glow + thicker stroke for selected element
+      styles.push('filter: drop-shadow(0 0 8px #ffcc00) drop-shadow(0 0 16px #ffcc00)');
+      styles.push('stroke: #ffcc00');
+      styles.push('stroke-width: 4');
+      styles.push('opacity: 1');
     }
 
-    // Add hover cursor
-    el.setAttribute('style',
-      (el.getAttribute('style') || '') + '; cursor: pointer;'
-    );
-
+    el.setAttribute('style', styles.join('; '));
     index++;
   });
 
-  // Add a subtle grid background to show material extent
-  const serializer = new XMLSerializer();
-  return serializer.serializeToString(svg);
+  return new XMLSerializer().serializeToString(svg);
 }

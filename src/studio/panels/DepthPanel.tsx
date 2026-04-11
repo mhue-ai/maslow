@@ -5,7 +5,6 @@ const DEPTH_COLORS: Record<string, string> = {
   face: '#44cc44',
   relief: '#4488ff',
   through: '#ff4444',
-  unassigned: '#888888',
 };
 
 const DEPTH_LABELS: Record<DepthType, string> = {
@@ -35,7 +34,6 @@ export function DepthPanel() {
     );
   }
 
-  // Build lookup for display
   const pathMap = new Map(paths.map((p) => [p.data.id, p]));
   const orderedIds = operationOrder.length > 0
     ? operationOrder
@@ -44,66 +42,103 @@ export function DepthPanel() {
   const selected = paths.find((p) => p.data.id === selectedPathId);
   const selectedAssignment = selectedPathId ? depthAssignments.get(selectedPathId) : null;
 
+  // Helper: get display info for a path
+  const getPathInfo = (id: string) => {
+    const a = depthAssignments.get(id);
+    const type = a?.type ?? 'face';
+    const depth = a?.depth ?? 0;
+    const label = DEPTH_LABELS[type];
+    const depthStr = type === 'face' ? '' : type === 'through' ? `${material.thickness}mm` : `${depth}mm`;
+    return { type, label, depthStr, color: DEPTH_COLORS[type] };
+  };
+
   return (
     <div>
       <h3>Cut Order ({paths.length} paths)</h3>
 
       <p style={{ fontSize: 10, color: '#555', marginBottom: 6 }}>
-        Click shape = pocket. Shift+click = through-cut.
+        Click shape = pocket. Shift+click = through.
       </p>
 
       <div className="path-list">
         {orderedIds.map((id, idx) => {
           const path = pathMap.get(id);
           if (!path) return null;
-          const assignment = depthAssignments.get(id);
-          const depthType = assignment?.type ?? 'unassigned';
-          const color = DEPTH_COLORS[depthType];
+          const info = getPathInfo(id);
+          const isSelected = selectedPathId === id;
 
           return (
             <div
               key={id}
-              className={`path-item ${selectedPathId === id ? 'selected' : ''}`}
+              className={`path-item ${isSelected ? 'selected' : ''}`}
               onClick={() => selectPath(id)}
+              onMouseEnter={() => selectPath(id)}
             >
-              {/* Reorder buttons */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginRight: 4 }}>
                 <button
                   className="btn btn-sm"
                   style={{ padding: '0 3px', fontSize: 8, lineHeight: 1 }}
                   onClick={(e) => { e.stopPropagation(); moveOperation(id, 'up'); }}
                   disabled={idx === 0}
-                  title="Move up in cut order"
                 >^</button>
                 <button
                   className="btn btn-sm"
                   style={{ padding: '0 3px', fontSize: 8, lineHeight: 1 }}
                   onClick={(e) => { e.stopPropagation(); moveOperation(id, 'down'); }}
                   disabled={idx === orderedIds.length - 1}
-                  title="Move down in cut order"
                 >v</button>
               </div>
-              <div className="path-swatch" style={{ background: color }} />
-              <span style={{ flex: 1, fontSize: 11 }}>{path.data.name}</span>
-              <span style={{ fontSize: 9, color: '#666' }}>
-                {assignment
-                  ? `${DEPTH_LABELS[assignment.type]}${assignment.type !== 'face' ? ` · ${assignment.strategy === 'pocket' ? 'Pkt' : 'Out'}` : ''}`
-                  : '—'}
-              </span>
+              <div className="path-swatch" style={{ background: info.color }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {path.data.name}
+                </div>
+                <div style={{ fontSize: 9, color: '#666' }}>
+                  {info.label}{info.depthStr ? ` — ${info.depthStr}` : ''}
+                </div>
+              </div>
             </div>
           );
         })}
       </div>
 
+      {/* Profile Cut (release cut) */}
+      <div style={{ marginTop: 12 }}>
+        <h3>Profile Cut</h3>
+        <p style={{ fontSize: 10, color: '#555', marginBottom: 4 }}>
+          Final outline cut that releases the work from the sheet. Always cut last.
+        </p>
+        {(() => {
+          // Check if any path is assigned as through-cut with outline strategy
+          const profilePaths = orderedIds.filter((id) => {
+            const a = depthAssignments.get(id);
+            return a?.type === 'through' && a?.strategy === 'outline';
+          });
+          if (profilePaths.length > 0) {
+            return (
+              <div style={{ fontSize: 11, color: '#44cc44' }}>
+                {profilePaths.length} profile cut(s) assigned
+              </div>
+            );
+          }
+          return (
+            <div style={{ fontSize: 11, color: '#888' }}>
+              Select a border path and set it to Through + Outline to create the profile cut
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* Selected path detail controls */}
       {selected && selectedPathId && (
         <div style={{ marginTop: 12 }}>
-          <h3>Depth: {selected.data.name}</h3>
+          <h3>{selected.data.name}</h3>
 
           <div className="depth-controls">
             {(['face', 'relief', 'through'] as DepthType[]).map((type) => (
               <button
                 key={type}
-                className={`btn btn-sm depth-btn ${selectedAssignment?.type === type ? 'active' : ''}`}
+                className={`btn btn-sm depth-btn ${(selectedAssignment?.type ?? 'face') === type ? 'active' : ''}`}
                 onClick={() => setDepth(selectedPathId, type)}
               >
                 {DEPTH_LABELS[type]}
@@ -111,7 +146,6 @@ export function DepthPanel() {
             ))}
           </div>
 
-          {/* Cut strategy: pocket vs outline */}
           {selectedAssignment && selectedAssignment.type !== 'face' && (
             <div style={{ marginTop: 8 }}>
               <label style={{ fontSize: 11, color: '#666', marginBottom: 4, display: 'block' }}>
@@ -131,7 +165,6 @@ export function DepthPanel() {
             </div>
           )}
 
-          {/* Bit offset: inside / none / outside */}
           {selectedAssignment && selectedAssignment.type !== 'face' && selectedAssignment.strategy === 'outline' && (
             <div style={{ marginTop: 8 }}>
               <label style={{ fontSize: 11, color: '#666', marginBottom: 4, display: 'block' }}>
@@ -143,9 +176,6 @@ export function DepthPanel() {
                     key={off}
                     className={`btn btn-sm depth-btn ${selectedAssignment.profileOffset === off ? 'active' : ''}`}
                     onClick={() => setProfileOffset(selectedPathId, off)}
-                    title={off === 'inside' ? 'Cut inside the line (part stays full size)' :
-                           off === 'outside' ? 'Cut outside the line (hole stays full size)' :
-                           'Cut on the line (no compensation)'}
                   >
                     {off === 'inside' ? 'Inside' : off === 'outside' ? 'Outside' : 'On Line'}
                   </button>
@@ -163,9 +193,7 @@ export function DepthPanel() {
                 min={0.5}
                 max={material.thickness}
                 step={0.5}
-                onChange={(e) =>
-                  setDepth(selectedPathId, 'relief', Number(e.target.value))
-                }
+                onChange={(e) => setDepth(selectedPathId, 'relief', Number(e.target.value))}
               />
               <span className="unit">mm</span>
             </label>
@@ -179,19 +207,12 @@ export function DepthPanel() {
         </div>
       )}
 
-      {/* Bulk actions */}
       <div style={{ marginTop: 16 }}>
         <h3>Bulk Assign</h3>
         <div style={{ display: 'flex', gap: 4 }}>
-          <button className="btn btn-sm" onClick={() => paths.forEach((p) => setDepth(p.data.id, 'face'))}>
-            All Face
-          </button>
-          <button className="btn btn-sm" onClick={() => paths.forEach((p) => setDepth(p.data.id, 'relief'))}>
-            All Relief
-          </button>
-          <button className="btn btn-sm" onClick={() => paths.forEach((p) => setDepth(p.data.id, 'through'))}>
-            All Through
-          </button>
+          <button className="btn btn-sm" onClick={() => paths.forEach((p) => setDepth(p.data.id, 'face'))}>All Face</button>
+          <button className="btn btn-sm" onClick={() => paths.forEach((p) => setDepth(p.data.id, 'relief'))}>All Relief</button>
+          <button className="btn btn-sm" onClick={() => paths.forEach((p) => setDepth(p.data.id, 'through'))}>All Through</button>
         </div>
       </div>
     </div>
