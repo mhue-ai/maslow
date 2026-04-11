@@ -6,8 +6,9 @@ import type { MInfo } from '../types/machine';
 export function parseMInfo(text: string): MInfo | null {
   try {
     // MINFO might be embedded in MSG:INFO wrapper or raw JSON
+    // Extract JSON object from message — handles nested braces
     let jsonStr = text;
-    const jsonMatch = text.match(/\{[^}]+\}/);
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       jsonStr = jsonMatch[0];
     }

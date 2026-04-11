@@ -32,7 +32,7 @@ export function generateProfileGcode(
 
   const passes = calculateDepthPasses(totalDepth, tool.depthPerPass);
 
-  // Calculate tab positions along the path
+  // Calculate tab positions along the path (center of each tab)
   const tabPositions = withTabs
     ? calculateTabPositions(points, tool.tabCount)
     : [];
@@ -48,23 +48,29 @@ export function generateProfileGcode(
     lines.push(rapid(points[0].x, points[0].y));
     lines.push(plunge(z, tool.plungeRate));
 
-    // Follow the path
+    // Follow the path, tracking tab zone entry/exit
     let accumulated = 0;
+    let inTab = false;
+    const tabZ = z + tool.tabHeight;
+    const halfTabWidth = tool.tabWidth / 2;
 
     for (let i = 1; i < points.length; i++) {
       const prev = points[i - 1];
       const curr = points[i];
-      const segLen = dist(prev, curr);
-      accumulated += segLen;
+      accumulated += dist(prev, curr);
 
-      // Check if we're in a tab zone (only on final pass with through-cuts)
-      if (withTabs && isFinalPass) {
-        const inTab = tabPositions.some(
-          (tp) => Math.abs(accumulated - tp) < tool.tabWidth / 2
+      if (withTabs && isFinalPass && tabPositions.length > 0) {
+        const nowInTab = tabPositions.some(
+          (tp) => accumulated >= tp - halfTabWidth && accumulated <= tp + halfTabWidth
         );
-        if (inTab) {
-          const tabZ = z + tool.tabHeight;
-          lines.push(`G1 Z${tabZ.toFixed(3)} F${tool.plungeRate}`);
+
+        if (nowInTab && !inTab) {
+          // Entering tab zone — raise Z
+          lines.push(plunge(tabZ, tool.plungeRate));
+          inTab = true;
+        } else if (!nowInTab && inTab) {
+          // Exiting tab zone — plunge back down
+          inTab = false;
           lines.push(linearMove(curr.x, curr.y, tool.feedRate));
           lines.push(plunge(z, tool.plungeRate));
           continue;
@@ -72,6 +78,11 @@ export function generateProfileGcode(
       }
 
       lines.push(linearMove(curr.x, curr.y, tool.feedRate));
+    }
+
+    // If still in a tab at end, plunge back before closing
+    if (inTab) {
+      lines.push(plunge(z, tool.plungeRate));
     }
 
     // Close the path
@@ -83,6 +94,7 @@ export function generateProfileGcode(
 }
 
 function calculateTabPositions(points: Point[], tabCount: number): number[] {
+  if (tabCount <= 0) return [];
   const total = pathLength(points);
   const positions: number[] = [];
   const spacing = total / tabCount;

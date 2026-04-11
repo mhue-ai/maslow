@@ -90,7 +90,7 @@ export function CommandPanel() {
       >
         {consoleLog.map((msg, i) => (
           <div
-            key={i}
+            key={`${msg.timestamp}-${i}`}
             style={{
               color:
                 msg.type === 'error'

@@ -32,11 +32,12 @@ export function SvgOverlay() {
   // Position SVG slightly above the material top face
   const zPos = material.thickness / 2 + 0.1;
 
+  // ShapeGeometry lies in the XY plane. The material top face is also XY at Z=zPos.
+  // No rotation needed — scale handles the SVG Y-flip, position handles centering.
   return (
     <group
       position={[transform.offsetX, transform.offsetY, zPos]}
       scale={[transform.scaleX, transform.scaleY, 1]}
-      rotation={[-Math.PI / 2, 0, 0]}
     >
       {paths.map((path) => {
         const assignment = depthAssignments.get(path.data.id);

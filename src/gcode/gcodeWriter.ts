@@ -36,11 +36,11 @@ export function gcodeHeader(rpm: number): string[] {
   ];
 }
 
-export function gcodeFooter(): string[] {
+export function gcodeFooter(safeHeight: number): string[] {
   return [
     '',
     'M05 ; Spindle off',
-    'G0 Z10 ; Retract',
+    `G0 Z${formatCoord(safeHeight)} ; Retract to safe height`,
     'G0 X0 Y0 ; Return home',
     '; End of program',
   ];

@@ -71,7 +71,7 @@ export function generateGcode(
   }
 
   // Footer
-  lines.push(...gcodeFooter());
+  lines.push(...gcodeFooter(toolConfig.safeHeight));
 
   // Estimate time (very rough: total G1 distance / feed rate)
   const totalMoveLines = lines.filter((l) => l.startsWith('G1') || l.startsWith('G0')).length;

@@ -7,6 +7,8 @@ export type MachineState =
   | 'Run'
   | 'Jog'
   | 'Hold'
+  | 'Door'
+  | 'Homing'
   | 'Extending'
   | 'Retracting'
   | 'Unknown';

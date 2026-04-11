@@ -56,7 +56,7 @@ export function connect(url: string): void {
     reconnectTimer = setTimeout(() => {
       const currentStore = useMachineStore.getState();
       if (currentStore.connection === 'disconnected') {
-        connect(url);
+        connect(currentStore.url); // Use current URL, not stale closure
       }
     }, 3000);
   };

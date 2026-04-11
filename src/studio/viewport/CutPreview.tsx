@@ -28,46 +28,37 @@ export function CutPreview() {
           ? material.thickness + 0.5
           : assignment.depth;
 
-        return path.shapes.map((shape, shapeIdx) => {
-          // Create extruded geometry for the cut volume
-          const extrudeSettings = {
-            depth: cutDepth,
-            bevelEnabled: false,
-          };
-
-          return (
-            <group
-              key={`cut-${path.data.id}-${shapeIdx}`}
-              position={[transform.offsetX, transform.offsetY, topZ]}
-              scale={[transform.scaleX, transform.scaleY, 1]}
-              rotation={[-Math.PI / 2, 0, 0]}
-            >
-              {/* Pocket floor - visible bottom of the cut */}
-              {assignment.type === 'relief' && (
-                <mesh position={[0, 0, -0.01]}>
-                  <shapeGeometry args={[shape]} />
-                  <meshStandardMaterial
-                    color="#8B6914"
-                    roughness={0.9}
-                    side={DoubleSide}
-                  />
-                </mesh>
-              )}
-
-              {/* Cut walls - extruded downward */}
-              <mesh position={[0, 0, 0]} rotation={[0, 0, 0]}>
-                <extrudeGeometry args={[shape, extrudeSettings]} />
+        return path.shapes.map((shape, shapeIdx) => (
+          <group
+            key={`cut-${path.data.id}-${shapeIdx}`}
+            position={[transform.offsetX, transform.offsetY, topZ]}
+            scale={[transform.scaleX, transform.scaleY, 1]}
+          >
+            {/* Pocket floor at the bottom of the cut */}
+            {assignment.type === 'relief' && (
+              <mesh position={[0, 0, -cutDepth]}>
+                <shapeGeometry args={[shape]} />
                 <meshStandardMaterial
-                  color={assignment.type === 'through' ? '#1a1a2e' : '#6B4D1A'}
-                  roughness={0.95}
-                  transparent={assignment.type === 'through'}
-                  opacity={assignment.type === 'through' ? 0.15 : 0.85}
+                  color="#8B6914"
+                  roughness={0.9}
                   side={DoubleSide}
                 />
               </mesh>
-            </group>
-          );
-        });
+            )}
+
+            {/* Cut walls — extruded downward from top surface into material */}
+            <mesh position={[0, 0, -cutDepth]} rotation={[0, 0, 0]}>
+              <extrudeGeometry args={[shape, { depth: cutDepth, bevelEnabled: false }]} />
+              <meshStandardMaterial
+                color={assignment.type === 'through' ? '#1a1a2e' : '#6B4D1A'}
+                roughness={0.95}
+                transparent={assignment.type === 'through'}
+                opacity={assignment.type === 'through' ? 0.15 : 0.85}
+                side={DoubleSide}
+              />
+            </mesh>
+          </group>
+        ));
       })}
     </group>
   );
