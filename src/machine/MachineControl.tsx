@@ -6,6 +6,8 @@ import { CommandPanel } from './panels/CommandPanel';
 import { CalibratePanel } from './panels/CalibratePanel';
 import { GcodeRunPanel } from './panels/GcodeRunPanel';
 import { TestPanel } from './panels/TestPanel';
+import { useMachineStore } from '../store/machineStore';
+import { send } from '../comms/maslowSocket';
 
 type MachineTab = 'monitor' | 'jog' | 'calibrate' | 'gcode' | 'console' | 'test';
 
@@ -20,9 +22,37 @@ const TABS: { id: MachineTab; label: string }[] = [
 
 export function MachineControl() {
   const [tab, setTab] = useState<MachineTab>('monitor');
+  const connection = useMachineStore((s) => s.connection);
+
+  const handleEstop = () => {
+    send('\x18'); // Ctrl-X soft reset
+    useMachineStore.getState().clearJob();
+  };
 
   return (
     <div className="machine-control">
+      {/* E-STOP — always visible when connected */}
+      {connection === 'connected' && (
+        <button
+          onClick={handleEstop}
+          style={{
+            width: '100%',
+            padding: '12px',
+            background: '#cc2222',
+            border: '2px solid #ff4444',
+            borderRadius: 6,
+            color: '#fff',
+            fontSize: 16,
+            fontWeight: 700,
+            cursor: 'pointer',
+            letterSpacing: 2,
+            marginBottom: 8,
+          }}
+        >
+          EMERGENCY STOP
+        </button>
+      )}
+
       <ConnectionPanel />
 
       <nav style={{ display: 'flex', gap: 4, borderBottom: '1px solid #2a2a4a', paddingBottom: 8 }}>

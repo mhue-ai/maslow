@@ -1,5 +1,5 @@
 import type { Shape } from 'three';
-import type { ToolConfig } from '../types/design';
+import type { ToolConfig, ProfileOffset } from '../types/design';
 import { linearMove, rapid, rapidZ, plunge } from './gcodeWriter';
 import { calculateDepthPasses } from './depthPasses';
 
@@ -11,24 +11,34 @@ interface Point {
 /**
  * Generate profile cut G-code that follows the shape outline.
  * Uses linearized path segments (all G1 moves, no arcs for MVP).
+ * profileOffset shifts the path by half the bit diameter inside or outside.
  */
 export function generateProfileGcode(
   shape: Shape,
   totalDepth: number,
   tool: ToolConfig,
   transform: { scaleX: number; scaleY: number; offsetX: number; offsetY: number },
-  withTabs: boolean
+  withTabs: boolean,
+  profileOffset: ProfileOffset = 'none'
 ): string[] {
   const lines: string[] = [];
 
   // Get outline points with high resolution
   const rawPoints = shape.getPoints(128);
-  const points: Point[] = rawPoints.map((p) => ({
+  let points: Point[] = rawPoints.map((p) => ({
     x: p.x * transform.scaleX + transform.offsetX,
     y: p.y * transform.scaleY + transform.offsetY,
   }));
 
   if (points.length < 2) return lines;
+
+  // Apply bit offset compensation
+  if (profileOffset !== 'none') {
+    const offsetDist = tool.bitDiameter / 2;
+    const dir = profileOffset === 'outside' ? 1 : -1;
+    points = offsetPolygon(points, offsetDist * dir);
+    if (points.length < 2) return lines;
+  }
 
   const passes = calculateDepthPasses(totalDepth, tool.depthPerPass);
 
@@ -116,4 +126,49 @@ function pathLength(points: Point[]): number {
 
 function dist(a: Point, b: Point): number {
   return Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
+}
+
+/**
+ * Offset a closed polygon by a distance. Positive = outward, negative = inward.
+ * Uses vertex normal averaging for simple offset.
+ */
+function offsetPolygon(points: Point[], distance: number): Point[] {
+  const n = points.length;
+  if (n < 3) return points;
+
+  const result: Point[] = [];
+
+  for (let i = 0; i < n; i++) {
+    const prev = points[(i - 1 + n) % n];
+    const curr = points[i];
+    const next = points[(i + 1) % n];
+
+    // Edge normals (perpendicular to edge, pointing outward)
+    const e1 = { x: curr.x - prev.x, y: curr.y - prev.y };
+    const e2 = { x: next.x - curr.x, y: next.y - curr.y };
+
+    // Normals (rotate 90 degrees CCW)
+    const n1 = normalize({ x: -e1.y, y: e1.x });
+    const n2 = normalize({ x: -e2.y, y: e2.x });
+
+    // Average normal at vertex
+    const avg = normalize({ x: n1.x + n2.x, y: n1.y + n2.y });
+
+    // Handle sharp corners: limit offset to avoid self-intersection
+    const dot = n1.x * avg.x + n1.y * avg.y;
+    const scale = dot > 0.1 ? distance / dot : distance;
+
+    result.push({
+      x: curr.x + avg.x * scale,
+      y: curr.y + avg.y * scale,
+    });
+  }
+
+  return result;
+}
+
+function normalize(p: Point): Point {
+  const len = Math.sqrt(p.x * p.x + p.y * p.y);
+  if (len < 0.0001) return { x: 0, y: 0 };
+  return { x: p.x / len, y: p.y / len };
 }

@@ -16,14 +16,15 @@ export interface GenerationResult {
 
 /**
  * Generate complete G-code for all paths with depth assignments.
- * Operation order: relief (pocket) first, then through-cut (profile) last.
+ * Uses operationOrder to control cut sequence.
  */
 export function generateGcode(
   paths: ConvertedPath[],
   depthAssignments: Map<string, DepthAssignment>,
   toolConfig: ToolConfig,
   transform: SvgTransform,
-  materialThickness: number
+  materialThickness: number,
+  operationOrder: string[]
 ): GenerationResult {
   const lines: string[] = [];
   let operationCount = 0;
@@ -31,32 +32,19 @@ export function generateGcode(
   // Header
   lines.push(...gcodeHeader(toolConfig.rpm));
 
-  // Sort operations: relief first, through-cut last
-  const reliefPaths = paths.filter((p) => depthAssignments.get(p.data.id)?.type === 'relief');
-  const throughPaths = paths.filter((p) => depthAssignments.get(p.data.id)?.type === 'through');
+  // Build path lookup
+  const pathMap = new Map(paths.map((p) => [p.data.id, p]));
 
-  // Generate relief operations (pocket or outline based on strategy)
-  for (const path of reliefPaths) {
-    const assignment = depthAssignments.get(path.data.id)!;
-    const label = assignment.strategy === 'pocket' ? 'Relief pocket' : 'Relief outline';
-    lines.push('');
-    lines.push(`; === ${path.data.name} — ${label} ===`);
+  // Process paths in user-defined order
+  for (const pathId of operationOrder) {
+    const path = pathMap.get(pathId);
+    const assignment = depthAssignments.get(pathId);
+    if (!path || !assignment || assignment.type === 'face') continue;
 
-    for (const shape of path.shapes) {
-      if (assignment.strategy === 'outline') {
-        lines.push(...generateProfileGcode(shape, assignment.depth, toolConfig, transform, false));
-      } else {
-        lines.push(...generatePocketGcode(shape, assignment.depth, toolConfig, transform));
-      }
-      operationCount++;
-    }
-  }
+    const isThrough = assignment.type === 'through';
+    const totalDepth = isThrough ? materialThickness + 0.5 : assignment.depth;
+    const label = `${assignment.type === 'through' ? 'Through-cut' : 'Relief'} ${assignment.strategy}`;
 
-  // Generate through-cut operations (pocket or outline based on strategy)
-  for (const path of throughPaths) {
-    const assignment = depthAssignments.get(path.data.id)!;
-    const totalDepth = materialThickness + 0.5; // slight overshoot
-    const label = assignment.strategy === 'pocket' ? 'Through-cut pocket' : 'Through-cut profile';
     lines.push('');
     lines.push(`; === ${path.data.name} — ${label} ===`);
 
@@ -64,7 +52,10 @@ export function generateGcode(
       if (assignment.strategy === 'pocket') {
         lines.push(...generatePocketGcode(shape, totalDepth, toolConfig, transform));
       } else {
-        lines.push(...generateProfileGcode(shape, totalDepth, toolConfig, transform, true));
+        lines.push(...generateProfileGcode(
+          shape, totalDepth, toolConfig, transform,
+          isThrough, assignment.profileOffset
+        ));
       }
       operationCount++;
     }
@@ -73,15 +64,27 @@ export function generateGcode(
   // Footer
   lines.push(...gcodeFooter(toolConfig.safeHeight));
 
-  // Estimate time (very rough: total G1 distance / feed rate)
-  const totalMoveLines = lines.filter((l) => l.startsWith('G1') || l.startsWith('G0')).length;
-  const estimatedTimeMin = (totalMoveLines * 2) / toolConfig.feedRate; // rough estimate
+  // Estimate time based on total cutting distance
+  let totalDist = 0;
+  let px = 0, py = 0;
+  for (const line of lines) {
+    const xm = line.match(/X(-?[\d.]+)/);
+    const ym = line.match(/Y(-?[\d.]+)/);
+    if (xm || ym) {
+      const nx = xm ? parseFloat(xm[1]) : px;
+      const ny = ym ? parseFloat(ym[1]) : py;
+      totalDist += Math.sqrt((nx - px) ** 2 + (ny - py) ** 2);
+      px = nx;
+      py = ny;
+    }
+  }
+  const estimatedTimeMin = Math.max(1, Math.round(totalDist / toolConfig.feedRate));
 
   return {
     lines,
     stats: {
       lineCount: lines.length,
-      estimatedTimeMin: Math.max(1, Math.round(estimatedTimeMin)),
+      estimatedTimeMin,
       operationCount,
     },
   };

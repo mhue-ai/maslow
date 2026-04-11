@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useDesignStore } from '../../store/designStore';
 import { generateGcode, type GenerationResult } from '../../gcode/gcodeGenerator';
 import { computeSvgTransform } from '../../svg/svgScaler';
+import { checkBounds, type BoundsResult } from '../../gcode/boundsCheck';
 import { downloadGcode } from '../../gcode/gcodeWriter';
 
 export function GcodeExportPanel() {
@@ -10,9 +11,12 @@ export function GcodeExportPanel() {
   const toolConfig = useDesignStore((s) => s.toolConfig);
   const material = useDesignStore((s) => s.material);
   const svgBounds = useDesignStore((s) => s.svgBounds);
+  const svgTransformOverride = useDesignStore((s) => s.svgTransformOverride);
+  const operationOrder = useDesignStore((s) => s.operationOrder);
   const setGcode = useDesignStore((s) => s.setGcode);
 
   const [result, setResult] = useState<GenerationResult | null>(null);
+  const [bounds, setBounds] = useState<BoundsResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const hasAssignments = Array.from(depthAssignments.values()).some(
@@ -30,6 +34,7 @@ export function GcodeExportPanel() {
 
   const handleGenerate = () => {
     setError(null);
+    setBounds(null);
 
     if (!svgBounds) {
       setError('No SVG bounds available');
@@ -44,19 +49,22 @@ export function GcodeExportPanel() {
     try {
       const transform = computeSvgTransform(
         { ...svgBounds, minX: 0, minY: 0 },
-        material
+        material,
+        toolConfig.workOrigin,
+        svgTransformOverride
       );
 
       const gen = generateGcode(
-        paths,
-        depthAssignments,
-        toolConfig,
-        transform,
-        material.thickness
+        paths, depthAssignments, toolConfig, transform,
+        material.thickness, operationOrder
       );
 
       setResult(gen);
       setGcode(gen.lines.join('\n'));
+
+      // Run bounds check
+      const boundsResult = checkBounds(gen.lines, material, toolConfig.workOrigin);
+      setBounds(boundsResult);
     } catch (err) {
       setError(`Generation failed: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -81,6 +89,20 @@ export function GcodeExportPanel() {
       >
         Generate G-Code
       </button>
+
+      {bounds && !bounds.inBounds && (
+        <div className="warning" style={{ background: 'rgba(255, 50, 50, 0.15)', borderColor: 'rgba(255, 50, 50, 0.4)', color: '#ff6666' }}>
+          {bounds.warnings.map((w, i) => (
+            <div key={i} style={{ marginBottom: 4 }}>{w}</div>
+          ))}
+        </div>
+      )}
+
+      {bounds && bounds.inBounds && result && (
+        <div style={{ fontSize: 11, color: '#44cc44', marginBottom: 4 }}>
+          Bounds OK: {bounds.maxX - bounds.minX > 0 ? `${(bounds.maxX - bounds.minX).toFixed(0)}x${(bounds.maxY - bounds.minY).toFixed(0)}mm` : '—'}
+        </div>
+      )}
 
       {result && (
         <div style={{ fontSize: 12, color: '#aaa' }}>

@@ -1,4 +1,5 @@
 import { useDesignStore } from '../../store/designStore';
+import type { WorkOrigin } from '../../types/design';
 
 export function ToolSettingsPanel() {
   const config = useDesignStore((s) => s.toolConfig);
@@ -17,6 +18,26 @@ export function ToolSettingsPanel() {
   return (
     <div>
       <h3>Tool Settings</h3>
+
+      <label>
+        Work Origin
+        <select
+          value={config.workOrigin}
+          onChange={(e) => setConfig({ workOrigin: e.target.value as WorkOrigin })}
+          style={{
+            padding: '4px 6px',
+            border: '1px solid #333',
+            borderRadius: 4,
+            background: '#0d0d1a',
+            color: '#ddd',
+            fontSize: 13,
+          }}
+        >
+          <option value="center">Center</option>
+          <option value="bottom-left">Bottom-Left</option>
+          <option value="top-left">Top-Left</option>
+        </select>
+      </label>
 
       <label>
         Bit diameter

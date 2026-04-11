@@ -18,14 +18,18 @@ export function SvgOverlay() {
   const selectedPathId = useDesignStore((s) => s.selectedPathId);
   const selectPath = useDesignStore((s) => s.selectPath);
   const showCutPreview = useDesignStore((s) => s.showCutPreview);
+  const toolConfig = useDesignStore((s) => s.toolConfig);
+  const svgTransformOverride = useDesignStore((s) => s.svgTransformOverride);
 
   const transform = useMemo(() => {
     if (!svgBounds) return null;
     return computeSvgTransform(
       { ...svgBounds, minX: 0, minY: 0 },
-      material
+      material,
+      toolConfig.workOrigin,
+      svgTransformOverride
     );
-  }, [svgBounds, material]);
+  }, [svgBounds, material, toolConfig.workOrigin, svgTransformOverride]);
 
   if (paths.length === 0 || !transform || showCutPreview) return null;
 

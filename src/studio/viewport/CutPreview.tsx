@@ -8,11 +8,13 @@ export function CutPreview() {
   const material = useDesignStore((s) => s.material);
   const svgBounds = useDesignStore((s) => s.svgBounds);
   const depthAssignments = useDesignStore((s) => s.depthAssignments);
+  const toolConfig = useDesignStore((s) => s.toolConfig);
+  const svgTransformOverride = useDesignStore((s) => s.svgTransformOverride);
 
   const transform = useMemo(() => {
     if (!svgBounds) return null;
-    return computeSvgTransform({ ...svgBounds, minX: 0, minY: 0 }, material);
-  }, [svgBounds, material]);
+    return computeSvgTransform({ ...svgBounds, minX: 0, minY: 0 }, material, toolConfig.workOrigin, svgTransformOverride);
+  }, [svgBounds, material, toolConfig.workOrigin, svgTransformOverride]);
 
   if (paths.length === 0 || !transform) return null;
 

@@ -1,7 +1,8 @@
 import { useDesignStore } from './designStore';
 import { parseSvg } from '../svg/svgParser';
 import { svgToShapes } from '../svg/svgToShapes';
-import type { Material, DepthAssignment, ToolConfig } from '../types/design';
+import type { Material, DepthAssignment, ToolConfig, SvgTransformOverride } from '../types/design';
+import { DEFAULT_SVG_TRANSFORM } from '../types/design';
 
 interface ProjectFile {
   version: 1;
@@ -10,6 +11,8 @@ interface ProjectFile {
   svgText: string | null;
   depthAssignments: DepthAssignment[];
   toolConfig: ToolConfig;
+  svgTransformOverride?: SvgTransformOverride;
+  operationOrder?: string[];
 }
 
 /**
@@ -25,6 +28,8 @@ export function saveProject(name: string): void {
     svgText: state.svgText,
     depthAssignments: Array.from(state.depthAssignments.values()),
     toolConfig: state.toolConfig,
+    svgTransformOverride: state.svgTransformOverride,
+    operationOrder: state.operationOrder,
   };
 
   const json = JSON.stringify(project, null, 2);
@@ -64,6 +69,9 @@ export async function loadProject(file: File): Promise<string | null> {
   store.setMaterial(project.material);
   store.setToolConfig(project.toolConfig);
 
+  // Restore SVG transform override
+  store.setSvgTransformOverride(project.svgTransformOverride ?? DEFAULT_SVG_TRANSFORM);
+
   // Restore SVG if present
   if (project.svgText) {
     store.setSvgText(project.svgText);
@@ -82,18 +90,26 @@ export async function loadProject(file: File): Promise<string | null> {
     store.setSvgBounds(null);
   }
 
-  // Restore depth assignments
+  // Restore depth assignments (with profileOffset fallback for older projects)
   const assignments = new Map<string, DepthAssignment>();
   if (project.depthAssignments) {
     for (const a of project.depthAssignments) {
-      assignments.set(a.pathId, a);
+      assignments.set(a.pathId, {
+        ...a,
+        profileOffset: a.profileOffset ?? 'none',
+      });
     }
   }
   useDesignStore.setState({ depthAssignments: assignments });
+
+  // Restore operation order
+  if (project.operationOrder) {
+    store.setOperationOrder(project.operationOrder);
+  }
 
   // Clear generated G-code (stale after load)
   store.setGcode(null);
   store.selectPath(null);
 
-  return null; // no error
+  return null;
 }

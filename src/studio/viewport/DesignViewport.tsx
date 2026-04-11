@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
 import { MaterialBlock } from './MaterialBlock';
 import { SvgOverlay } from './SvgOverlay';
+import { ToolpathOverlay } from './ToolpathOverlay';
 import { CutPreview } from './CutPreview';
 import { useDesignStore } from '../../store/designStore';
 
@@ -43,6 +44,7 @@ function Scene() {
       <MaterialBlock />
       <SvgOverlay />
       {showCutPreview && <CutPreview />}
+      <ToolpathOverlay />
 
       <Grid
         args={[maxDim * 4, maxDim * 4]}

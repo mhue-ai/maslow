@@ -123,9 +123,16 @@ function handleMessage(line: string): void {
     return;
   }
 
-  // ok acknowledgments
+  // ok acknowledgments — advance job streaming
   if (line === 'ok') {
-    return; // Don't flood console with oks
+    if (store.jobRunning) {
+      store.advanceJob();
+      const s = useMachineStore.getState();
+      if (s.jobRunning && s.jobCurrentLine < s.jobLines.length) {
+        send(s.jobLines[s.jobCurrentLine]);
+      }
+    }
+    return;
   }
 
   // Everything else

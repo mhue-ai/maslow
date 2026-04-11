@@ -1,4 +1,4 @@
-import type { Material } from '../types/design';
+import type { Material, WorkOrigin, SvgTransformOverride } from '../types/design';
 
 export interface SvgTransform {
   scaleX: number;
@@ -9,28 +9,63 @@ export interface SvgTransform {
 
 /**
  * Compute the transform to map SVG coordinates onto the material surface.
- * SVG origin is top-left with Y-down; Three.js uses center origin with Y-up (for the XY plane).
- * We map SVG content to cover the material surface, centered at origin.
+ * SVG origin is top-left with Y-down; CNC/Three.js uses Y-up.
+ *
+ * Work origin determines where (0,0) is on the material:
+ * - center: (0,0) at material center (default)
+ * - bottom-left: (0,0) at bottom-left corner, all coordinates positive
+ * - top-left: (0,0) at top-left corner, Y goes negative downward
  */
 export function computeSvgTransform(
   svgBounds: { width: number; height: number; minX: number; minY: number },
-  material: Material
+  material: Material,
+  workOrigin: WorkOrigin = 'center',
+  override?: SvgTransformOverride
 ): SvgTransform {
-  // Scale SVG to fit material dimensions (uniform scale to contain)
+  // Base scale: fit SVG to material, uniform to preserve aspect ratio
   const scaleX = material.width / svgBounds.width;
   const scaleY = material.height / svgBounds.height;
-  const uniformScale = Math.min(scaleX, scaleY);
+  let uniformScale = Math.min(scaleX, scaleY);
 
-  // Center the SVG on the material
-  // SVG coords: (minX, minY) is top-left
-  // Material coords: centered at (0, 0), X goes right, Y goes up
-  const offsetX = -svgBounds.width / 2 - svgBounds.minX;
-  const offsetY = -svgBounds.height / 2 - svgBounds.minY;
+  // Apply user scale override
+  if (override) {
+    uniformScale *= override.scale;
+  }
+
+  // Apply mirror
+  const mirrorX = override?.mirrorX ? -1 : 1;
+  const mirrorY = override?.mirrorY ? -1 : 1;
+
+  const finalScaleX = uniformScale * mirrorX;
+  const finalScaleY = -uniformScale * mirrorY; // Negative for SVG Y-flip
+
+  // Compute base offsets to center SVG content
+  const svgCenterX = (svgBounds.minX + svgBounds.width / 2);
+  const svgCenterY = (svgBounds.minY + svgBounds.height / 2);
+
+  let offsetX = -svgCenterX * finalScaleX;
+  let offsetY = -svgCenterY * finalScaleY;
+
+  // Shift for work origin
+  if (workOrigin === 'bottom-left') {
+    offsetX += material.width / 2;
+    offsetY += material.height / 2;
+  } else if (workOrigin === 'top-left') {
+    offsetX += material.width / 2;
+    offsetY -= material.height / 2;
+  }
+  // 'center' needs no shift
+
+  // Apply user offset override (in mm)
+  if (override) {
+    offsetX += override.offsetX;
+    offsetY += override.offsetY;
+  }
 
   return {
-    scaleX: uniformScale,
-    scaleY: -uniformScale, // Flip Y (SVG is Y-down, Three.js is Y-up)
-    offsetX: offsetX * uniformScale,
-    offsetY: -offsetY * uniformScale, // Flip offset too
+    scaleX: finalScaleX,
+    scaleY: finalScaleY,
+    offsetX,
+    offsetY,
   };
 }
