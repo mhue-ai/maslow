@@ -55,6 +55,10 @@ interface DesignState {
   toolConfig: ToolConfig;
   setToolConfig: (c: Partial<ToolConfig>) => void;
 
+  // Profile cut — outermost shape, always last operation
+  profileCutId: string | null;
+  setProfileCutId: (id: string | null) => void;
+
   // Generated G-code
   gcode: string | null;
   setGcode: (g: string | null) => void;
@@ -103,21 +107,60 @@ export const useDesignStore = create<DesignState>((set, get) => ({
 
   paths: [],
   setPaths: (p) => {
-    // Auto-assign all paths to "face" by default
-    const assignments = new Map<string, DepthAssignment>();
+    // Auto-detect the outermost shape (largest bounding box area) for profile cut
+    let profileId: string | null = null;
+    let maxArea = 0;
     for (const path of p) {
-      assignments.set(path.data.id, {
-        pathId: path.data.id,
-        type: 'face',
-        depth: 0,
-        strategy: 'pocket',
-        profileOffset: 'none',
-      });
+      for (const shape of path.shapes) {
+        const pts = shape.getPoints(32);
+        if (pts.length < 3) continue;
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        for (const pt of pts) {
+          if (pt.x < minX) minX = pt.x;
+          if (pt.x > maxX) maxX = pt.x;
+          if (pt.y < minY) minY = pt.y;
+          if (pt.y > maxY) maxY = pt.y;
+        }
+        const area = (maxX - minX) * (maxY - minY);
+        if (area > maxArea) {
+          maxArea = area;
+          profileId = path.data.id;
+        }
+      }
     }
+
+    // Assign all paths to face, except profile cut → through + outline + outside
+    const assignments = new Map<string, DepthAssignment>();
+    const thickness = get().material.thickness;
+    for (const path of p) {
+      if (path.data.id === profileId) {
+        assignments.set(path.data.id, {
+          pathId: path.data.id,
+          type: 'through',
+          depth: thickness,
+          strategy: 'outline',
+          profileOffset: 'outside',
+        });
+      } else {
+        assignments.set(path.data.id, {
+          pathId: path.data.id,
+          type: 'face',
+          depth: 0,
+          strategy: 'pocket',
+          profileOffset: 'none',
+        });
+      }
+    }
+
+    // Operation order: all non-profile paths first, profile cut last
+    const order = p.map((pp) => pp.data.id).filter((id) => id !== profileId);
+    if (profileId) order.push(profileId);
+
     set({
       paths: p,
-      operationOrder: p.map((pp) => pp.data.id),
+      operationOrder: order,
       depthAssignments: assignments,
+      profileCutId: profileId,
     });
   },
   selectedPathId: null,
@@ -224,6 +267,9 @@ export const useDesignStore = create<DesignState>((set, get) => ({
       },
     }));
   },
+
+  profileCutId: null,
+  setProfileCutId: (id) => set({ profileCutId: id }),
 
   showCutPreview: false,
   toggleCutPreview: () => set((s) => ({ showCutPreview: !s.showCutPreview })),

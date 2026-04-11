@@ -24,6 +24,7 @@ export function DepthPanel() {
   const material = useDesignStore((s) => s.material);
   const operationOrder = useDesignStore((s) => s.operationOrder);
   const moveOperation = useDesignStore((s) => s.moveOperation);
+  const profileCutId = useDesignStore((s) => s.profileCutId);
 
   if (paths.length === 0) {
     return (
@@ -87,10 +88,14 @@ export function DepthPanel() {
                   disabled={idx === orderedIds.length - 1}
                 >v</button>
               </div>
-              <div className="path-swatch" style={{ background: info.color }} />
+              <div className="path-swatch" style={{
+                background: id === profileCutId ? '#ff8800' : info.color,
+                border: id === profileCutId ? '1px solid #ffaa44' : 'none',
+              }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {path.data.name}
+                  {id === profileCutId ? '✂ ' : ''}{path.data.name}
+                  {id === profileCutId && <span style={{ fontSize: 9, color: '#ff8800' }}> (Profile Cut)</span>}
                 </div>
                 <div style={{ fontSize: 9, color: '#666' }}>
                   {info.label}{info.depthStr ? ` — ${info.depthStr}` : ''}

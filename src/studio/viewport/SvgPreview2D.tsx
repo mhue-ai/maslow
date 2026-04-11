@@ -13,6 +13,8 @@ export function SvgPreview2D() {
   const selectPath = useDesignStore((s) => s.selectPath);
   const setDepth = useDesignStore((s) => s.setDepth);
   const svgTransformOverride = useDesignStore((s) => s.svgTransformOverride);
+  const profileCutId = useDesignStore((s) => s.profileCutId);
+  const toolConfig = useDesignStore((s) => s.toolConfig);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [svgDoc, setSvgDoc] = useState<string | null>(null);
@@ -26,8 +28,8 @@ export function SvgPreview2D() {
   // Process SVG text with interactivity enhancements
   useEffect(() => {
     if (!svgText) { setSvgDoc(null); return; }
-    setSvgDoc(enhanceSvg(svgText, depthAssignments, selectedPathId));
-  }, [svgText, depthAssignments, selectedPathId]);
+    setSvgDoc(enhanceSvg(svgText, depthAssignments, selectedPathId, profileCutId, toolConfig.bitDiameter, material));
+  }, [svgText, depthAssignments, selectedPathId, profileCutId, toolConfig.bitDiameter, material]);
 
   // Handle clicks on SVG elements — toggle pocket/through
   const handleClick = useCallback((e: React.MouseEvent) => {
@@ -175,7 +177,10 @@ export function SvgPreview2D() {
 function enhanceSvg(
   svgText: string,
   depthAssignments: Map<string, any>,
-  selectedPathId: string | null
+  selectedPathId: string | null,
+  profileCutId: string | null,
+  bitDiameter: number,
+  material: { width: number; height: number }
 ): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgText, 'image/svg+xml');
@@ -186,6 +191,16 @@ function enhanceSvg(
   svg.setAttribute('height', '100%');
   svg.style.display = 'block';
 
+  // Calculate stroke scale: bit diameter relative to SVG viewBox
+  const vb = svg.getAttribute('viewBox');
+  let svgWidth = 600;
+  if (vb) {
+    const parts = vb.split(/[\s,]+/).map(Number);
+    if (parts[2]) svgWidth = parts[2];
+  }
+  // Scale bit diameter to SVG coordinate space
+  const bitStrokeWidth = (bitDiameter / material.width) * svgWidth;
+
   const shapeElements = svg.querySelectorAll(
     'path, polygon, polyline, rect, circle, ellipse, line, text'
   );
@@ -193,6 +208,7 @@ function enhanceSvg(
   let index = 0;
   shapeElements.forEach((el) => {
     const pathId = `path-${index}`;
+    const isProfileCut = pathId === profileCutId;
     el.setAttribute('data-path-index', String(index));
 
     const assignment = depthAssignments.get(pathId);
@@ -201,25 +217,37 @@ function enhanceSvg(
     const styles: string[] = ['cursor: pointer'];
     const filters: string[] = [];
 
-    // Depth type coloring — only change colors for non-face paths
-    if (depthType === 'relief') {
+    // Scale strokes to represent bit kerf width
+    const hasStroke = el.getAttribute('stroke') && el.getAttribute('stroke') !== 'none';
+    if (hasStroke) {
+      styles.push(`stroke-width: ${bitStrokeWidth.toFixed(2)}`);
+      styles.push('stroke-linecap: round');
+      styles.push('stroke-linejoin: round');
+    }
+
+    // Profile cut — orange dashed outline
+    if (isProfileCut) {
+      if (hasStroke) {
+        el.setAttribute('stroke', '#ff8800');
+        styles.push(`stroke-dasharray: ${(bitStrokeWidth * 2).toFixed(1)} ${bitStrokeWidth.toFixed(1)}`);
+      }
+      filters.push('drop-shadow(0 0 4px #ff8800)');
+      styles.push('opacity: 0.9');
+    } else if (depthType === 'relief') {
       filters.push('drop-shadow(0 0 3px #4488ff)');
       styles.push('opacity: 0.85');
-      const fill = el.getAttribute('fill');
-      if (fill && fill !== 'none') el.setAttribute('fill', '#2255aa');
-      const stroke = el.getAttribute('stroke');
-      if (stroke && stroke !== 'none') el.setAttribute('stroke', '#4488ff');
-    } else if (depthType === 'through') {
+      // Show pocket fill area — fill the interior with blue to visualize the pocketed region
+      el.setAttribute('fill', 'rgba(34, 85, 170, 0.4)');
+      if (hasStroke) el.setAttribute('stroke', '#4488ff');
+    } else if (depthType === 'through' && !isProfileCut) {
       filters.push('drop-shadow(0 0 3px #ff4444)');
       styles.push('opacity: 0.85');
-      const fill = el.getAttribute('fill');
-      if (fill && fill !== 'none') el.setAttribute('fill', '#aa2222');
-      const stroke = el.getAttribute('stroke');
-      if (stroke && stroke !== 'none') el.setAttribute('stroke', '#ff4444');
+      // Show through-cut area
+      el.setAttribute('fill', 'rgba(170, 34, 34, 0.4)');
+      if (hasStroke) el.setAttribute('stroke', '#ff4444');
     }
-    // Face type: leave original SVG colors untouched
 
-    // Selection highlight — subtle glow only, never change stroke color
+    // Selection highlight
     if (isSelected) {
       filters.push('drop-shadow(0 0 6px #ffffff) drop-shadow(0 0 12px #4488ff)');
       styles.push('opacity: 1');
