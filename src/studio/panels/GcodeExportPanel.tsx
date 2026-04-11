@@ -49,7 +49,7 @@ export function GcodeExportPanel() {
 
     try {
       const transform = computeSvgTransform(
-        { ...svgBounds, minX: 0, minY: 0 },
+        svgBounds,
         material,
         toolConfig.workOrigin,
         svgTransformOverride

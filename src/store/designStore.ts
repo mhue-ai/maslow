@@ -14,6 +14,7 @@ interface HistoryEntry {
   material: Material;
   svgTransformOverride: SvgTransformOverride;
   operationOrder: string[];
+  designCopies: DesignCopy[];
 }
 
 interface DesignState {
@@ -32,8 +33,8 @@ interface DesignState {
   setSvgText: (t: string | null) => void;
 
   // SVG bounding box
-  svgBounds: { width: number; height: number } | null;
-  setSvgBounds: (b: { width: number; height: number } | null) => void;
+  svgBounds: { width: number; height: number; minX: number; minY: number } | null;
+  setSvgBounds: (b: { width: number; height: number; minX: number; minY: number } | null) => void;
 
   // SVG transform override (move/scale/rotate/mirror)
   svgTransformOverride: SvgTransformOverride;
@@ -89,6 +90,7 @@ function captureHistory(s: DesignState): HistoryEntry {
     material: { ...s.material },
     svgTransformOverride: { ...s.svgTransformOverride },
     operationOrder: [...s.operationOrder],
+    designCopies: s.designCopies.map((c) => ({ ...c })),
   };
 }
 
@@ -202,11 +204,16 @@ export const useDesignStore = create<DesignState>((set, get) => ({
       designCopies: s.designCopies.filter((c) => c.id !== id),
     }));
   },
-  updateDesignCopy: (id, offsetX, offsetY) =>
+  updateDesignCopy: (id, offsetX, offsetY) => {
+    get().pushHistory();
     set((s) => ({
       designCopies: s.designCopies.map((c) => c.id === id ? { ...c, offsetX, offsetY } : c),
-    })),
-  clearDesignCopies: () => set({ designCopies: [] }),
+    }));
+  },
+  clearDesignCopies: () => {
+    get().pushHistory();
+    set({ designCopies: [] });
+  },
 
   nudgeDesign: (dx, dy) => {
     set((s) => ({
@@ -243,6 +250,7 @@ export const useDesignStore = create<DesignState>((set, get) => ({
         material: { ...entry.material },
         svgTransformOverride: { ...entry.svgTransformOverride },
         operationOrder: [...entry.operationOrder],
+        designCopies: entry.designCopies.map((c) => ({ ...c })),
         historyIndex: s.historyIndex - 1,
       };
     }),
@@ -257,6 +265,7 @@ export const useDesignStore = create<DesignState>((set, get) => ({
         material: { ...entry.material },
         svgTransformOverride: { ...entry.svgTransformOverride },
         operationOrder: [...entry.operationOrder],
+        designCopies: entry.designCopies.map((c) => ({ ...c })),
         historyIndex: nextIdx,
       };
     }),

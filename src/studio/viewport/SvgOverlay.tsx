@@ -75,7 +75,7 @@ export function SvgOverlay() {
   const transform = useMemo(() => {
     if (!svgBounds) return null;
     return computeSvgTransform(
-      { ...svgBounds, minX: 0, minY: 0 },
+      svgBounds,
       material,
       toolConfig.workOrigin,
       svgTransformOverride

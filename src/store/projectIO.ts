@@ -82,7 +82,7 @@ export async function loadProject(file: File): Promise<string | null> {
       const parsed = parseSvg(project.svgText);
       const converted = svgToShapes(parsed);
       store.setPaths(converted);
-      store.setSvgBounds({ width: parsed.viewBox.width, height: parsed.viewBox.height });
+      store.setSvgBounds(parsed.viewBox);
     } catch {
       return 'Project loaded but SVG could not be re-parsed';
     }

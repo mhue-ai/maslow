@@ -42,7 +42,7 @@ export function SvgImportPanel() {
       }
 
       setPaths(converted);
-      setSvgBounds({ width: parsed.viewBox.width, height: parsed.viewBox.height });
+      setSvgBounds(parsed.viewBox);
       setSvgText(text);
       setFileName(file.name);
     } catch (err) {
