@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 200" width="600mm" height="200mm">
+  <!-- CNC-ready version: all text converted to filled shapes -->
+
+  <!-- Outer border shape - elongated hexagon (FILLED for CNC) -->
+  <polygon
+    points="50,100 90,20 510,20 550,100 510,180 90,180"
+    fill="black"
+    stroke="none"
+    id="outer-border"
+  />
+
+  <!-- Inner cutout - slightly smaller hexagon (creates border ring when subtracted) -->
+  <polygon
+    points="62,100 98,28 502,28 538,100 502,172 98,172"
+    fill="white"
+    stroke="none"
+    id="inner-cutout"
+  />
+
+  <!-- Inner border ring - the area between outer and inner hexagons -->
+  <!-- For CNC: pocket the outer border, keep the inner area at face level -->
+
+  <!-- Background fill inside inner border (pocket area) -->
+  <polygon
+    points="66,100 100,32 500,32 534,100 500,168 100,168"
+    fill="#333333"
+    stroke="none"
+    id="background"
+  />
+
+  <!-- Decorative diamonds (filled) -->
+  <polygon points="108,100 115,93 122,100 115,107" fill="black" stroke="none" id="diamond-left" />
+  <polygon points="478,100 485,93 492,100 485,107" fill="black" stroke="none" id="diamond-right" />
+
+  <!-- Decorative lines as thin rectangles (CNC-cuttable) -->
+  <rect x="175" y="56.5" width="70" height="3" fill="black" id="line-left" />
+  <rect x="355" y="56.5" width="70" height="3" fill="black" id="line-right" />
+  <rect x="140" y="143.5" width="320" height="3" fill="black" id="line-bottom" />
+
+  <!-- TOMORROWLAND TRANSIT AUTHORITY - simplified as block letters -->
+  <!-- Each letter is a filled rectangle approximation for CNC demonstration -->
+  <!-- In production, convert real text to paths in Inkscape -->
+  <rect x="155" y="60" width="290" height="16" rx="1" fill="black" id="subtitle-block" />
+
+  <!-- PEOPLEMOVER - main text as large block -->
+  <rect x="110" y="90" width="380" height="50" rx="2" fill="black" id="main-text-block" />
+
+</svg>

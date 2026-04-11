@@ -2,12 +2,13 @@ import { useMemo } from 'react';
 import { DoubleSide } from 'three';
 import { useDesignStore } from '../../store/designStore';
 import { computeSvgTransform } from '../../svg/svgScaler';
+import type { ThreeEvent } from '@react-three/fiber';
 
 const DEPTH_COLORS: Record<string, string> = {
   face: '#44cc44',
   relief: '#4488ff',
   through: '#ff4444',
-  unassigned: '#888888',
+  unassigned: '#999999',
 };
 
 function DesignInstance({ offsetX, offsetY, opacity }: { offsetX: number; offsetY: number; opacity: number }) {
@@ -15,6 +16,23 @@ function DesignInstance({ offsetX, offsetY, opacity }: { offsetX: number; offset
   const depthAssignments = useDesignStore((s) => s.depthAssignments);
   const selectedPathId = useDesignStore((s) => s.selectedPathId);
   const selectPath = useDesignStore((s) => s.selectPath);
+  const setDepth = useDesignStore((s) => s.setDepth);
+
+  const handleClick = (e: ThreeEvent<MouseEvent>, pathId: string) => {
+    e.stopPropagation();
+    selectPath(pathId);
+
+    const assignment = depthAssignments.get(pathId);
+    const currentType = assignment?.type ?? 'face';
+
+    if (e.nativeEvent.shiftKey) {
+      // Shift+click → toggle through-cut
+      setDepth(pathId, currentType === 'through' ? 'face' : 'through');
+    } else {
+      // Click → toggle pocket (relief)
+      setDepth(pathId, currentType === 'relief' ? 'face' : 'relief');
+    }
+  };
 
   return (
     <group position={[offsetX, offsetY, 0]}>
@@ -27,10 +45,7 @@ function DesignInstance({ offsetX, offsetY, opacity }: { offsetX: number; offset
         return path.shapes.map((shape, shapeIdx) => (
           <mesh
             key={`${path.data.id}-${shapeIdx}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              selectPath(path.data.id);
-            }}
+            onClick={(e) => handleClick(e, path.data.id)}
           >
             <shapeGeometry args={[shape]} />
             <meshStandardMaterial
@@ -77,10 +92,7 @@ export function SvgOverlay() {
       scale={[transform.scaleX, transform.scaleY, 1]}
       rotation={[0, 0, transform.rotation]}
     >
-      {/* Primary design instance */}
       <DesignInstance offsetX={0} offsetY={0} opacity={1} />
-
-      {/* Duplicated copies */}
       {designCopies.map((copy) => (
         <DesignInstance
           key={copy.id}

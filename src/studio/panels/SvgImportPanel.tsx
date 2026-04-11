@@ -28,8 +28,9 @@ export function SvgImportPanel() {
 
       if (parsed.hasTextElements) {
         setWarning(
-          'This SVG contains <text> elements that cannot be processed. ' +
-          'Convert text to paths in Inkscape first (Path → Object to Path).'
+          'Text elements found — these cannot be cut by CNC. ' +
+          'Open in Inkscape, select text, then Path → Object to Path (Ctrl+Shift+C) to convert to cuttable shapes. ' +
+          'Non-text shapes were imported successfully.'
         );
       }
 

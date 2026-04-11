@@ -48,6 +48,10 @@ export function DepthPanel() {
     <div>
       <h3>Cut Order ({paths.length} paths)</h3>
 
+      <p style={{ fontSize: 10, color: '#555', marginBottom: 6 }}>
+        Click shape = pocket. Shift+click = through-cut.
+      </p>
+
       <div className="path-list">
         {orderedIds.map((id, idx) => {
           const path = pathMap.get(id);
