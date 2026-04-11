@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { DesignViewport } from './viewport/DesignViewport';
+import { SvgPreview2D } from './viewport/SvgPreview2D';
 import { MaterialPanel } from './panels/MaterialPanel';
 import { SvgImportPanel } from './panels/SvgImportPanel';
 import { SvgTransformPanel } from './panels/SvgTransformPanel';
@@ -9,17 +10,16 @@ import { GcodeExportPanel } from './panels/GcodeExportPanel';
 import { useDesignStore } from '../store/designStore';
 import { saveProject, loadProject } from '../store/projectIO';
 
+type ViewMode = 'design' | '3d' | 'toolpaths';
+
 export function DesignStudio() {
-  const showCutPreview = useDesignStore((s) => s.showCutPreview);
-  const toggleCutPreview = useDesignStore((s) => s.toggleCutPreview);
-  const showToolpaths = useDesignStore((s) => s.showToolpaths);
-  const toggleToolpaths = useDesignStore((s) => s.toggleToolpaths);
   const undo = useDesignStore((s) => s.undo);
   const redo = useDesignStore((s) => s.redo);
   const historyIndex = useDesignStore((s) => s.historyIndex);
   const historyLength = useDesignStore((s) => s.history.length);
   const gcode = useDesignStore((s) => s.gcode);
 
+  const [viewMode, setViewMode] = useState<ViewMode>('design');
   const loadInputRef = useRef<HTMLInputElement>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -37,6 +37,17 @@ export function DesignStudio() {
     e.target.value = '';
   };
 
+  const handleViewMode = (mode: ViewMode) => {
+    if (mode === '3d') {
+      useDesignStore.setState({ showCutPreview: true, showToolpaths: false });
+    } else if (mode === 'toolpaths') {
+      useDesignStore.setState({ showCutPreview: false, showToolpaths: true });
+    } else {
+      useDesignStore.setState({ showCutPreview: false, showToolpaths: false });
+    }
+    setViewMode(mode);
+  };
+
   return (
     <div className="design-studio">
       <div className="panel panel-left">
@@ -47,24 +58,8 @@ export function DesignStudio() {
           <input ref={loadInputRef} type="file" accept=".json,.maslow.json" onChange={handleLoad} style={{ display: 'none' }} />
         </div>
         <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-          <button
-            className="btn btn-sm"
-            onClick={undo}
-            disabled={historyIndex < 0}
-            title="Undo (Ctrl+Z)"
-            style={{ flex: 1 }}
-          >
-            Undo
-          </button>
-          <button
-            className="btn btn-sm"
-            onClick={redo}
-            disabled={historyIndex >= historyLength - 1 || historyLength === 0}
-            title="Redo (Ctrl+Y)"
-            style={{ flex: 1 }}
-          >
-            Redo
-          </button>
+          <button className="btn btn-sm" onClick={undo} disabled={historyIndex < 0} title="Undo (Ctrl+Z)" style={{ flex: 1 }}>Undo</button>
+          <button className="btn btn-sm" onClick={redo} disabled={historyIndex >= historyLength - 1 || historyLength === 0} title="Redo (Ctrl+Y)" style={{ flex: 1 }}>Redo</button>
         </div>
         {loadError && <div className="warning">{loadError}</div>}
 
@@ -75,19 +70,46 @@ export function DesignStudio() {
         <GcodeExportPanel />
       </div>
 
-      <DesignViewport />
+      {/* Center viewport — switches between 2D design view and 3D preview */}
+      <div className="viewport">
+        {viewMode === 'design' ? (
+          <SvgPreview2D />
+        ) : (
+          <DesignViewport />
+        )}
+      </div>
 
       <div className="panel panel-right">
         <DepthPanel />
-        <div style={{ display: 'flex', gap: 4, marginTop: 12 }}>
-          <button className="btn btn-sm" onClick={toggleCutPreview} style={{ flex: 1 }}>
-            {showCutPreview ? 'Flat View' : '3D Preview'}
-          </button>
-          {gcode && (
-            <button className="btn btn-sm" onClick={toggleToolpaths} style={{ flex: 1 }}>
-              {showToolpaths ? 'Hide Paths' : 'Toolpaths'}
+
+        {/* View mode switcher */}
+        <div style={{ marginTop: 12 }}>
+          <h3>View</h3>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button
+              className={`btn btn-sm ${viewMode === 'design' ? 'depth-btn active' : ''}`}
+              onClick={() => handleViewMode('design')}
+              style={{ flex: 1 }}
+            >
+              Design
             </button>
-          )}
+            <button
+              className={`btn btn-sm ${viewMode === '3d' ? 'depth-btn active' : ''}`}
+              onClick={() => handleViewMode('3d')}
+              style={{ flex: 1 }}
+            >
+              3D
+            </button>
+            {gcode && (
+              <button
+                className={`btn btn-sm ${viewMode === 'toolpaths' ? 'depth-btn active' : ''}`}
+                onClick={() => handleViewMode('toolpaths')}
+                style={{ flex: 1 }}
+              >
+                Paths
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
