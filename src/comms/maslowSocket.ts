@@ -5,12 +5,19 @@ import { parseMInfo } from './minfoParser';
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let statusPollTimer: ReturnType<typeof setInterval> | null = null;
+let lastResponseTime = 0;
+let healthCheckTimer: ReturnType<typeof setInterval> | null = null;
 
 export function connect(url: string): void {
   const store = useMachineStore.getState();
 
-  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-    return;
+  // Prevent duplicate connections
+  if (ws) {
+    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+      return;
+    }
+    // Clean up dead socket
+    cleanup();
   }
 
   store.setConnection('connecting');
@@ -25,17 +32,31 @@ export function connect(url: string): void {
   ws.onopen = () => {
     store.setConnection('connected');
     store.addConsoleMessage({ timestamp: Date.now(), text: 'Connected', type: 'info' });
+    lastResponseTime = Date.now();
 
-    // Start status polling
+    // Status polling — 1 second interval (ESP32 friendly)
     statusPollTimer = setInterval(() => {
       send('?');
-    }, 500);
+    }, 1000);
+
+    // Health check — if no response in 10 seconds, force reconnect
+    healthCheckTimer = setInterval(() => {
+      if (Date.now() - lastResponseTime > 10000) {
+        store.addConsoleMessage({
+          timestamp: Date.now(),
+          text: 'Connection health check failed — reconnecting',
+          type: 'error',
+        });
+        forceReconnect();
+      }
+    }, 5000);
 
     // Request initial machine info
     send('MINFO');
   };
 
   ws.onmessage = (event) => {
+    lastResponseTime = Date.now();
     const data = String(event.data);
     const lines = data.split('\n').filter((l) => l.trim());
 
@@ -45,32 +66,51 @@ export function connect(url: string): void {
   };
 
   ws.onerror = () => {
-    store.setConnection('error');
+    const store = useMachineStore.getState();
+    store.addConsoleMessage({
+      timestamp: Date.now(),
+      text: 'WebSocket error',
+      type: 'error',
+    });
+    // Force close so onclose fires and triggers reconnect
+    if (ws && ws.readyState !== WebSocket.CLOSED) {
+      ws.close();
+    }
   };
 
-  ws.onclose = () => {
+  ws.onclose = (event) => {
+    const store = useMachineStore.getState();
     store.setConnection('disconnected');
-    stopPolling();
+    cleanup();
+
+    store.addConsoleMessage({
+      timestamp: Date.now(),
+      text: `Disconnected (code: ${event.code})`,
+      type: 'info',
+    });
 
     // Auto-reconnect after 3 seconds
     reconnectTimer = setTimeout(() => {
       const currentStore = useMachineStore.getState();
       if (currentStore.connection === 'disconnected') {
-        connect(currentStore.url); // Use current URL, not stale closure
+        connect(currentStore.url);
       }
     }, 3000);
   };
 }
 
 export function disconnect(): void {
+  // Cancel any pending reconnect
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
-  stopPolling();
+
+  cleanup();
 
   if (ws) {
     ws.onclose = null; // Prevent auto-reconnect
+    ws.onerror = null;
     ws.close();
     ws = null;
   }
@@ -84,11 +124,31 @@ export function send(command: string): void {
   }
 }
 
-function stopPolling(): void {
+function cleanup(): void {
   if (statusPollTimer) {
     clearInterval(statusPollTimer);
     statusPollTimer = null;
   }
+  if (healthCheckTimer) {
+    clearInterval(healthCheckTimer);
+    healthCheckTimer = null;
+  }
+}
+
+function forceReconnect(): void {
+  cleanup();
+  if (ws) {
+    ws.onclose = null;
+    ws.onerror = null;
+    ws.close();
+    ws = null;
+  }
+  const store = useMachineStore.getState();
+  store.setConnection('disconnected');
+  // Reconnect immediately
+  setTimeout(() => {
+    connect(useMachineStore.getState().url);
+  }, 500);
 }
 
 function handleMessage(line: string): void {
