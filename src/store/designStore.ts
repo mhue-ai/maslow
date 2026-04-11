@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Shape } from 'three';
-import type { Material, DepthAssignment, ToolConfig, SvgPathData, CutStrategy, ProfileOffset, SvgTransformOverride } from '../types/design';
+import type { Material, DepthAssignment, ToolConfig, SvgPathData, CutStrategy, ProfileOffset, SvgTransformOverride, DesignCopy } from '../types/design';
 import { DEFAULT_MATERIAL, DEFAULT_TOOL_CONFIG, DEFAULT_SVG_TRANSFORM } from '../types/design';
 
 export interface ParsedPath {
@@ -57,6 +57,16 @@ interface DesignState {
   // Generated G-code
   gcode: string | null;
   setGcode: (g: string | null) => void;
+
+  // Design copies (tiling)
+  designCopies: DesignCopy[];
+  addDesignCopy: (offsetX: number, offsetY: number) => void;
+  removeDesignCopy: (id: string) => void;
+  updateDesignCopy: (id: string, offsetX: number, offsetY: number) => void;
+  clearDesignCopies: () => void;
+
+  // Nudge design position with arrow keys
+  nudgeDesign: (dx: number, dy: number) => void;
 
   // Preview mode
   showCutPreview: boolean;
@@ -161,6 +171,35 @@ export const useDesignStore = create<DesignState>((set, get) => ({
 
   gcode: null,
   setGcode: (g) => set({ gcode: g }),
+
+  designCopies: [],
+  addDesignCopy: (offsetX, offsetY) => {
+    get().pushHistory();
+    set((s) => ({
+      designCopies: [...s.designCopies, { id: `copy-${Date.now()}`, offsetX, offsetY }],
+    }));
+  },
+  removeDesignCopy: (id) => {
+    get().pushHistory();
+    set((s) => ({
+      designCopies: s.designCopies.filter((c) => c.id !== id),
+    }));
+  },
+  updateDesignCopy: (id, offsetX, offsetY) =>
+    set((s) => ({
+      designCopies: s.designCopies.map((c) => c.id === id ? { ...c, offsetX, offsetY } : c),
+    })),
+  clearDesignCopies: () => set({ designCopies: [] }),
+
+  nudgeDesign: (dx, dy) => {
+    set((s) => ({
+      svgTransformOverride: {
+        ...s.svgTransformOverride,
+        offsetX: s.svgTransformOverride.offsetX + dx,
+        offsetY: s.svgTransformOverride.offsetY + dy,
+      },
+    }));
+  },
 
   showCutPreview: false,
   toggleCutPreview: () => set((s) => ({ showCutPreview: !s.showCutPreview })),

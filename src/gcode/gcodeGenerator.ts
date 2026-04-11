@@ -1,4 +1,4 @@
-import type { ToolConfig, DepthAssignment } from '../types/design';
+import type { ToolConfig, DepthAssignment, DesignCopy } from '../types/design';
 import type { ConvertedPath } from '../svg/svgToShapes';
 import type { SvgTransform } from '../svg/svgScaler';
 import { gcodeHeader, gcodeFooter } from './gcodeWriter';
@@ -11,31 +11,32 @@ export interface GenerationResult {
     lineCount: number;
     estimatedTimeMin: number;
     operationCount: number;
+    copyCount: number;
   };
 }
 
 /**
- * Generate complete G-code for all paths with depth assignments.
- * Uses operationOrder to control cut sequence.
+ * Generate G-code for a single instance at a given offset.
  */
-export function generateGcode(
+function generateInstance(
   paths: ConvertedPath[],
   depthAssignments: Map<string, DepthAssignment>,
   toolConfig: ToolConfig,
   transform: SvgTransform,
   materialThickness: number,
-  operationOrder: string[]
-): GenerationResult {
+  operationOrder: string[],
+  copyOffset?: { x: number; y: number }
+): { lines: string[]; ops: number } {
   const lines: string[] = [];
-  let operationCount = 0;
+  let ops = 0;
 
-  // Header
-  lines.push(...gcodeHeader(toolConfig.rpm));
-
-  // Build path lookup
   const pathMap = new Map(paths.map((p) => [p.data.id, p]));
 
-  // Process paths in user-defined order
+  // Apply copy offset to the transform
+  const t: SvgTransform = copyOffset
+    ? { ...transform, offsetX: transform.offsetX + copyOffset.x, offsetY: transform.offsetY + copyOffset.y }
+    : transform;
+
   for (const pathId of operationOrder) {
     const path = pathMap.get(pathId);
     const assignment = depthAssignments.get(pathId);
@@ -50,21 +51,60 @@ export function generateGcode(
 
     for (const shape of path.shapes) {
       if (assignment.strategy === 'pocket') {
-        lines.push(...generatePocketGcode(shape, totalDepth, toolConfig, transform));
+        lines.push(...generatePocketGcode(shape, totalDepth, toolConfig, t));
       } else {
         lines.push(...generateProfileGcode(
-          shape, totalDepth, toolConfig, transform,
+          shape, totalDepth, toolConfig, t,
           isThrough, assignment.profileOffset
         ));
       }
-      operationCount++;
+      ops++;
     }
   }
 
-  // Footer
+  return { lines, ops };
+}
+
+/**
+ * Generate complete G-code for all design instances (primary + copies).
+ */
+export function generateGcode(
+  paths: ConvertedPath[],
+  depthAssignments: Map<string, DepthAssignment>,
+  toolConfig: ToolConfig,
+  transform: SvgTransform,
+  materialThickness: number,
+  operationOrder: string[],
+  designCopies: DesignCopy[] = []
+): GenerationResult {
+  const lines: string[] = [];
+  let operationCount = 0;
+
+  lines.push(...gcodeHeader(toolConfig.rpm));
+
+  // Primary instance
+  lines.push('');
+  lines.push('; ====== Primary Instance ======');
+  const primary = generateInstance(paths, depthAssignments, toolConfig, transform, materialThickness, operationOrder);
+  lines.push(...primary.lines);
+  operationCount += primary.ops;
+
+  // Additional copies
+  for (let i = 0; i < designCopies.length; i++) {
+    const copy = designCopies[i];
+    lines.push('');
+    lines.push(`; ====== Copy ${i + 1} (offset ${copy.offsetX}, ${copy.offsetY}) ======`);
+    const inst = generateInstance(
+      paths, depthAssignments, toolConfig, transform, materialThickness, operationOrder,
+      { x: copy.offsetX, y: copy.offsetY }
+    );
+    lines.push(...inst.lines);
+    operationCount += inst.ops;
+  }
+
   lines.push(...gcodeFooter(toolConfig.safeHeight));
 
-  // Estimate time based on total cutting distance
+  // Estimate time
   let totalDist = 0;
   let px = 0, py = 0;
   for (const line of lines) {
@@ -78,14 +118,14 @@ export function generateGcode(
       py = ny;
     }
   }
-  const estimatedTimeMin = Math.max(1, Math.round(totalDist / toolConfig.feedRate));
 
   return {
     lines,
     stats: {
       lineCount: lines.length,
-      estimatedTimeMin,
+      estimatedTimeMin: Math.max(1, Math.round(totalDist / toolConfig.feedRate)),
       operationCount,
+      copyCount: 1 + designCopies.length,
     },
   };
 }

@@ -1,7 +1,7 @@
 import { useDesignStore } from './designStore';
 import { parseSvg } from '../svg/svgParser';
 import { svgToShapes } from '../svg/svgToShapes';
-import type { Material, DepthAssignment, ToolConfig, SvgTransformOverride } from '../types/design';
+import type { Material, DepthAssignment, ToolConfig, SvgTransformOverride, DesignCopy } from '../types/design';
 import { DEFAULT_SVG_TRANSFORM } from '../types/design';
 
 interface ProjectFile {
@@ -13,6 +13,7 @@ interface ProjectFile {
   toolConfig: ToolConfig;
   svgTransformOverride?: SvgTransformOverride;
   operationOrder?: string[];
+  designCopies?: DesignCopy[];
 }
 
 /**
@@ -30,6 +31,7 @@ export function saveProject(name: string): void {
     toolConfig: state.toolConfig,
     svgTransformOverride: state.svgTransformOverride,
     operationOrder: state.operationOrder,
+    designCopies: state.designCopies,
   };
 
   const json = JSON.stringify(project, null, 2);
@@ -106,6 +108,9 @@ export async function loadProject(file: File): Promise<string | null> {
   if (project.operationOrder) {
     store.setOperationOrder(project.operationOrder);
   }
+
+  // Restore design copies
+  useDesignStore.setState({ designCopies: project.designCopies ?? [] });
 
   // Clear generated G-code (stale after load)
   store.setGcode(null);

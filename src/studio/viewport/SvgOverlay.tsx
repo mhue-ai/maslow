@@ -10,40 +10,14 @@ const DEPTH_COLORS: Record<string, string> = {
   unassigned: '#888888',
 };
 
-export function SvgOverlay() {
+function DesignInstance({ offsetX, offsetY, opacity }: { offsetX: number; offsetY: number; opacity: number }) {
   const paths = useDesignStore((s) => s.paths);
-  const material = useDesignStore((s) => s.material);
-  const svgBounds = useDesignStore((s) => s.svgBounds);
   const depthAssignments = useDesignStore((s) => s.depthAssignments);
   const selectedPathId = useDesignStore((s) => s.selectedPathId);
   const selectPath = useDesignStore((s) => s.selectPath);
-  const showCutPreview = useDesignStore((s) => s.showCutPreview);
-  const toolConfig = useDesignStore((s) => s.toolConfig);
-  const svgTransformOverride = useDesignStore((s) => s.svgTransformOverride);
 
-  const transform = useMemo(() => {
-    if (!svgBounds) return null;
-    return computeSvgTransform(
-      { ...svgBounds, minX: 0, minY: 0 },
-      material,
-      toolConfig.workOrigin,
-      svgTransformOverride
-    );
-  }, [svgBounds, material, toolConfig.workOrigin, svgTransformOverride]);
-
-  if (paths.length === 0 || !transform || showCutPreview) return null;
-
-  // Position SVG slightly above the material top face
-  const zPos = material.thickness / 2 + 0.1;
-
-  // ShapeGeometry lies in the XY plane. The material top face is also XY at Z=zPos.
-  // Rotation is applied around Z axis (perpendicular to material surface).
   return (
-    <group
-      position={[transform.offsetX, transform.offsetY, zPos]}
-      scale={[transform.scaleX, transform.scaleY, 1]}
-      rotation={[0, 0, transform.rotation]}
-    >
+    <group position={[offsetX, offsetY, 0]}>
       {paths.map((path) => {
         const assignment = depthAssignments.get(path.data.id);
         const depthType = assignment?.type ?? 'unassigned';
@@ -61,7 +35,7 @@ export function SvgOverlay() {
             <shapeGeometry args={[shape]} />
             <meshStandardMaterial
               color={color}
-              opacity={isSelected ? 0.9 : 0.6}
+              opacity={(isSelected ? 0.9 : 0.6) * opacity}
               transparent
               side={DoubleSide}
               emissive={isSelected ? '#ffffff' : '#000000'}
@@ -70,6 +44,51 @@ export function SvgOverlay() {
           </mesh>
         ));
       })}
+    </group>
+  );
+}
+
+export function SvgOverlay() {
+  const paths = useDesignStore((s) => s.paths);
+  const material = useDesignStore((s) => s.material);
+  const svgBounds = useDesignStore((s) => s.svgBounds);
+  const showCutPreview = useDesignStore((s) => s.showCutPreview);
+  const toolConfig = useDesignStore((s) => s.toolConfig);
+  const svgTransformOverride = useDesignStore((s) => s.svgTransformOverride);
+  const designCopies = useDesignStore((s) => s.designCopies);
+
+  const transform = useMemo(() => {
+    if (!svgBounds) return null;
+    return computeSvgTransform(
+      { ...svgBounds, minX: 0, minY: 0 },
+      material,
+      toolConfig.workOrigin,
+      svgTransformOverride
+    );
+  }, [svgBounds, material, toolConfig.workOrigin, svgTransformOverride]);
+
+  if (paths.length === 0 || !transform || showCutPreview) return null;
+
+  const zPos = material.thickness / 2 + 0.1;
+
+  return (
+    <group
+      position={[transform.offsetX, transform.offsetY, zPos]}
+      scale={[transform.scaleX, transform.scaleY, 1]}
+      rotation={[0, 0, transform.rotation]}
+    >
+      {/* Primary design instance */}
+      <DesignInstance offsetX={0} offsetY={0} opacity={1} />
+
+      {/* Duplicated copies */}
+      {designCopies.map((copy) => (
+        <DesignInstance
+          key={copy.id}
+          offsetX={copy.offsetX / Math.abs(transform.scaleX)}
+          offsetY={copy.offsetY / Math.abs(transform.scaleY)}
+          opacity={0.75}
+        />
+      ))}
     </group>
   );
 }

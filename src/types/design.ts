@@ -75,6 +75,13 @@ export const DEFAULT_MATERIAL: Material = {
   thickness: 19,
 };
 
+/** A positioned copy of the design on the material (for tiling/nesting) */
+export interface DesignCopy {
+  id: string;
+  offsetX: number; // mm from base design position
+  offsetY: number;
+}
+
 export interface MaterialPreset {
   name: string;
   width: number;

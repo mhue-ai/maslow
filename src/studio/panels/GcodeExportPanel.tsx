@@ -13,6 +13,7 @@ export function GcodeExportPanel() {
   const svgBounds = useDesignStore((s) => s.svgBounds);
   const svgTransformOverride = useDesignStore((s) => s.svgTransformOverride);
   const operationOrder = useDesignStore((s) => s.operationOrder);
+  const designCopies = useDesignStore((s) => s.designCopies);
   const setGcode = useDesignStore((s) => s.setGcode);
 
   const [result, setResult] = useState<GenerationResult | null>(null);
@@ -56,7 +57,7 @@ export function GcodeExportPanel() {
 
       const gen = generateGcode(
         paths, depthAssignments, toolConfig, transform,
-        material.thickness, operationOrder
+        material.thickness, operationOrder, designCopies
       );
 
       setResult(gen);

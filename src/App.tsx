@@ -13,10 +13,12 @@ export default function App() {
   const connection = useMachineStore((s) => s.connection);
   const undo = useDesignStore((s) => s.undo);
   const redo = useDesignStore((s) => s.redo);
+  const nudgeDesign = useDesignStore((s) => s.nudgeDesign);
 
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Undo/redo
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         undo();
@@ -25,10 +27,20 @@ export default function App() {
         e.preventDefault();
         redo();
       }
+
+      // Arrow keys to nudge design position (skip if typing in an input)
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return;
+
+      const step = e.shiftKey ? 10 : 1; // Shift = 10mm, normal = 1mm
+      if (e.key === 'ArrowLeft') { e.preventDefault(); nudgeDesign(-step, 0); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); nudgeDesign(step, 0); }
+      if (e.key === 'ArrowUp') { e.preventDefault(); nudgeDesign(0, step); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); nudgeDesign(0, -step); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [undo, redo]);
+  }, [undo, redo, nudgeDesign]);
 
   const handleEstop = () => {
     send('\x18');
