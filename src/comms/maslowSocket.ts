@@ -57,11 +57,18 @@ export function connect(url: string): void {
     send('MINFO');
   };
 
-  ws.onmessage = (event) => {
+  ws.onmessage = async (event) => {
     lastResponseTime = Date.now();
-    const data = String(event.data);
-    const lines = data.split('\n').filter((l) => l.trim());
 
+    // ESP3D sends data as Blob or string — handle both
+    let data: string;
+    if (event.data instanceof Blob) {
+      data = await event.data.text();
+    } else {
+      data = String(event.data);
+    }
+
+    const lines = data.split('\n').filter((l) => l.trim());
     for (const line of lines) {
       handleMessage(line.trim());
     }
@@ -155,6 +162,11 @@ function forceReconnect(): void {
 
 function handleMessage(line: string): void {
   const store = useMachineStore.getState();
+
+  // ESP3D protocol messages — silently ignore
+  if (line.startsWith('CURRENT_ID:') || line.startsWith('ACTIVE_ID:') || line.startsWith('PING:')) {
+    return;
+  }
 
   // Status report: <State|MPos:...|FS:...>
   if (line.startsWith('<') && line.endsWith('>')) {
