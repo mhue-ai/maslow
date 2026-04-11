@@ -24,14 +24,16 @@ export function connect(url: string): void {
 
   try {
     ws = new WebSocket(url);
-  } catch {
+    store.addConsoleMessage({ timestamp: Date.now(), text: `Connecting to ${url}...`, type: 'info' });
+  } catch (err) {
     store.setConnection('error');
+    store.addConsoleMessage({ timestamp: Date.now(), text: `Failed to create WebSocket: ${err}`, type: 'error' });
     return;
   }
 
   ws.onopen = () => {
     store.setConnection('connected');
-    store.addConsoleMessage({ timestamp: Date.now(), text: 'Connected', type: 'info' });
+    store.addConsoleMessage({ timestamp: Date.now(), text: `Connected to ${url}`, type: 'info' });
     lastResponseTime = Date.now();
 
     // Status polling — 1 second interval (ESP32 friendly)

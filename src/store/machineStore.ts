@@ -32,7 +32,7 @@ export const useMachineStore = create<MachineStoreState>((set) => ({
   connection: 'disconnected',
   setConnection: (c) => set({ connection: c }),
 
-  url: 'ws://maslow.fortmiller',
+  url: 'ws://maslow.fortmiller:81',
   setUrl: (u) => set({ url: u }),
 
   status: null,
