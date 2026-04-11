@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>PeopleMover Sign v6</title>
+<style>
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    margin: 0;
+    background: #555;
+    font-family: Arial, sans-serif;
+    padding: 20px;
+  }
+  h2 { color: #fff; margin-bottom: 10px; }
+  .note { color: #ccc; margin-top: 12px; font-size: 13px; max-width: 900px; text-align: center; line-height: 1.5; }
+  .label { color: #aaa; font-size: 12px; margin-top: 8px; text-align: center; }
+</style>
+</head>
+<body>
+  <h2>PeopleMover CNC Sign v6</h2>
+
+  <div style="background: #888; padding: 40px 20px; border-radius: 8px; margin: 10px 0;">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 200" width="1000" height="200">
+
+      <!--
+        v6 corrections:
+        - East/west symmetry: left and right halves are mirror images (symmetric about x=500)
+        - NOT north/south symmetric: text areas sit in upper portion,
+          "PEOPLEMOVER" dominates the lower 2/3, subtitle in upper 1/3
+        - Decorative lines DO NOT overlap subtitle text — they sit to the left and right of it
+        - Inner border chevron notches refined
+      -->
+
+      <!-- Blue background - outer hexagon -->
+      <polygon
+        points="0,100 175,0 825,0 1000,100 825,200 175,200"
+        fill="#1a4580"
+        stroke="none"
+      />
+
+      <!-- Outer white border -->
+      <polygon
+        points="12,100 184,9 816,9 988,100 816,191 184,191"
+        fill="none"
+        stroke="white"
+        stroke-width="3"
+      />
+
+      <!-- Inner border with chevron notches at ends -->
+      <polygon
+        points="62,100 88,58 108,34 892,34 912,58 938,100 912,142 892,166 108,166 88,142"
+        fill="none"
+        stroke="white"
+        stroke-width="2.5"
+      />
+
+      <!--
+        DECORATIVE LINES: positioned to NOT overlap subtitle text.
+        Subtitle "TOMORROWLAND TRANSIT AUTHORITY" spans roughly x=310 to x=690.
+        Lines sit OUTSIDE that range.
+      -->
+      <!-- Left decorative double lines (to the LEFT of subtitle) -->
+      <line x1="200" y1="66" x2="295" y2="66" stroke="white" stroke-width="1.5" />
+      <line x1="220" y1="60" x2="295" y2="60" stroke="white" stroke-width="1" />
+
+      <!-- Right decorative double lines (to the RIGHT of subtitle) -->
+      <line x1="705" y1="66" x2="800" y2="66" stroke="white" stroke-width="1.5" />
+      <line x1="705" y1="60" x2="780" y2="60" stroke="white" stroke-width="1" />
+
+      <!-- Subtitle: TOMORROWLAND TRANSIT AUTHORITY -->
+      <!-- Positioned in upper third of inner frame area -->
+      <text
+        x="500" y="70"
+        text-anchor="middle"
+        font-family="'Century Gothic', 'Trebuchet MS', 'Segoe UI', Arial, sans-serif"
+        font-size="14"
+        font-weight="400"
+        letter-spacing="4"
+        fill="white"
+      >TOMORROWLAND TRANSIT AUTHORITY</text>
+
+      <!-- Main text: PEOPLEMOVER -->
+      <!-- Positioned in lower 2/3 of inner frame, vertically centered in remaining space -->
+      <!-- Inner frame top ~34, bottom ~166. Subtitle baseline ~70. -->
+      <!-- Remaining space: 70 to 166 = 96px. Center of that = 118. Text baseline offset for 82pt ~= 148 -->
+      <text
+        x="500" y="148"
+        text-anchor="middle"
+        font-family="'Arial Black', 'Impact', 'Helvetica Neue', sans-serif"
+        font-size="82"
+        font-weight="900"
+        letter-spacing="1"
+        fill="white"
+        font-style="italic"
+      >PEOPLEMOVER</text>
+
+      <!-- LEFT decorations (mirror of right about x=500) -->
+      <!-- dot at x=133, diamond centered at x=163 -->
+      <circle cx="133" cy="112" r="5.5" fill="white" />
+      <polygon points="152,112 163,99 174,112 163,125" fill="white" stroke="none" />
+
+      <!-- RIGHT decorations (mirror: dot at x=867, diamond centered at x=837) -->
+      <polygon points="826,112 837,99 848,112 837,125" fill="white" stroke="none" />
+      <circle cx="867" cy="112" r="5.5" fill="white" />
+
+    </svg>
+    <div class="label">Finished painted sign</div>
+  </div>
+
+  <!-- SYMMETRY CHECK OVERLAY -->
+  <div style="background: #222; padding: 40px 20px; border-radius: 8px; margin: 10px 0;">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 200" width="1000" height="200">
+
+      <!-- Blue background -->
+      <polygon
+        points="0,100 175,0 825,0 1000,100 825,200 175,200"
+        fill="#1a4580"
+        stroke="none"
+      />
+
+      <!-- All white elements same as above -->
+      <polygon
+        points="12,100 184,9 816,9 988,100 816,191 184,191"
+        fill="none" stroke="white" stroke-width="3"
+      />
+      <polygon
+        points="62,100 88,58 108,34 892,34 912,58 938,100 912,142 892,166 108,166 88,142"
+        fill="none" stroke="white" stroke-width="2.5"
+      />
+      <line x1="200" y1="66" x2="295" y2="66" stroke="white" stroke-width="1.5" />
+      <line x1="220" y1="60" x2="295" y2="60" stroke="white" stroke-width="1" />
+      <line x1="705" y1="66" x2="800" y2="66" stroke="white" stroke-width="1.5" />
+      <line x1="705" y1="60" x2="780" y2="60" stroke="white" stroke-width="1" />
+      <text x="500" y="70" text-anchor="middle" font-family="'Century Gothic','Trebuchet MS',Arial,sans-serif" font-size="14" font-weight="400" letter-spacing="4" fill="white">TOMORROWLAND TRANSIT AUTHORITY</text>
+      <text x="500" y="148" text-anchor="middle" font-family="'Arial Black','Impact','Helvetica Neue',sans-serif" font-size="82" font-weight="900" letter-spacing="1" fill="white" font-style="italic">PEOPLEMOVER</text>
+      <circle cx="133" cy="112" r="5.5" fill="white" />
+      <polygon points="152,112 163,99 174,112 163,125" fill="white" stroke="none" />
+      <polygon points="826,112 837,99 848,112 837,125" fill="white" stroke="none" />
+      <circle cx="867" cy="112" r="5.5" fill="white" />
+
+      <!-- SYMMETRY LINE (vertical center) -->
+      <line x1="500" y1="0" x2="500" y2="200" stroke="red" stroke-width="1" stroke-dasharray="4,4" opacity="0.7" />
+
+      <!-- SYMMETRY VERIFICATION POINTS -->
+      <!-- Outer hex: left point x=0, right point x=1000 (sym: 0+1000=1000 ✓) -->
+      <!-- Outer hex top: x=175 and x=825 (sym: 175+825=1000 ✓) -->
+      <!-- Outer border: x=12/988, x=184/816 (sym: 12+988=1000 ✓, 184+816=1000 ✓) -->
+      <!-- Inner border: x=62/938, x=88/912, x=108/892 (sym: all sum to 1000 ✓) -->
+      <!-- Left lines: 200-295, Right lines: 705-800 (sym: 200+800=1000 ✓, 295+705=1000 ✓) -->
+      <!-- Left lines2: 220-295, Right lines2: 705-780 (sym: 220+780=1000 ✓, 295+705=1000 ✓) -->
+      <!-- Dot: 133/867 (sym: 133+867=1000 ✓) -->
+      <!-- Diamond centers: 163/837 (sym: 163+837=1000 ✓) -->
+
+    </svg>
+    <div class="label" style="color:#aaa;">East/west symmetry check (red dashed = center axis). All points verified symmetric about x=500.</div>
+  </div>
+
+  <p class="note">
+    <strong>v6 fixes:</strong><br/>
+    1. <strong>East/west symmetry</strong> — all coordinates verified: left+right sum to 1000 for every point pair<br/>
+    2. <strong>No north/south symmetry</strong> — subtitle sits in upper third, PEOPLEMOVER dominates lower two-thirds<br/>
+    3. <strong>Decorative lines no longer overlap text</strong> — lines are positioned to the LEFT (x=200-295) and RIGHT (x=705-800) of the subtitle text (x=310-690)
+  </p>
+</body>
+</html>
