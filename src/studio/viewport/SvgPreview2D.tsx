@@ -62,6 +62,15 @@ export function SvgPreview2D() {
           if (p.y > maxY) maxY = p.y;
         }
 
+        const w = maxX - minX;
+        const h = maxY - minY;
+        const area = w * h;
+
+        // Filter out degenerate shapes: tiny or extremely thin (construction artifacts)
+        // Use a very small threshold — coordinates may be in cm, mm, or px
+        if (area < 0.001) continue;
+        if (w > 0 && h > 0 && (w / h > 100 || h / w > 100)) continue;
+
         // Convert to SVG polygon points string
         const pointsStr = pts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
 
@@ -317,38 +326,50 @@ export function SvgPreview2D() {
           {material.width} x {material.height} x {material.thickness} mm
         </text>
 
-        {/* Ring shapes — only visible when depth > 0 */}
+        {/* Render order: largest shapes first (painter's algorithm),
+            then rings as compound paths (outer boundary + inner hole). */}
+        {[...shapePolygons]
+          .sort((a, b) => (b.bbox.w * b.bbox.h) - (a.bbox.w * a.bbox.h))
+          .map((poly) => {
+            const isSelected = selectedPathId === poly.id;
+            const isProfile = poly.id === profileCutId;
+            return (
+              <polygon
+                key={poly.id}
+                points={poly.points}
+                fill={depthColor(poly.id)}
+                stroke={isSelected ? '#4488ff' : depthStroke(poly.id)}
+                strokeWidth={(isSelected ? 3 : 1) / zoom}
+                strokeDasharray={isProfile ? `${6 / zoom} ${3 / zoom}` : undefined}
+                data-shape-id={poly.id}
+                style={{ cursor: 'crosshair' }}
+              />
+            );
+          })}
+
+        {/* Ring shapes as compound paths: outer boundary + reversed inner = gap only.
+            Uses fill-rule="evenodd" so the inner area is a hole. */}
         {ringPolygons.map((ring) => {
           const level = shapeLevels.get(ring.id)?.level ?? 0;
           const isSelected = selectedPathId === ring.id;
-          if (level <= 0 && !isSelected) return null;
+          const ringFill = level <= 0 ? '#c4a66a' : depthColor(ring.id);
+
+          // Build compound path: outer points forward, inner points reversed
+          const outerCoords = ring.outerPoints.split(' ').map(s => s.split(',').map(Number));
+          const innerCoords = ring.innerPoints.split(' ').map(s => s.split(',').map(Number)).reverse();
+          const outerD = `M${outerCoords.map(c => c.join(',')).join(' L')} Z`;
+          const innerD = `M${innerCoords.map(c => c.join(',')).join(' L')} Z`;
+
           return (
-            <polygon
+            <path
               key={ring.id}
-              points={ring.outerPoints}
-              fill={level > 0 ? depthColor(ring.id) : 'rgba(100,150,255,0.15)'}
-              stroke={isSelected ? '#4488ff' : 'none'}
-              strokeWidth={isSelected ? 2 / zoom : 0}
+              d={`${outerD} ${innerD}`}
+              fillRule="evenodd"
+              fill={isSelected && level <= 0 ? 'rgba(100,150,255,0.3)' : ringFill}
+              stroke={isSelected ? '#4488ff' : (level <= 0 ? '#aa885566' : '#666666')}
+              strokeWidth={(isSelected ? 2 : 0.5) / zoom}
               data-shape-id={ring.id}
               style={{ cursor: 'crosshair', pointerEvents: 'all' }}
-            />
-          );
-        })}
-
-        {/* Shape polygons — clean, no artifacts */}
-        {shapePolygons.map((poly) => {
-          const isSelected = selectedPathId === poly.id;
-          const isProfile = poly.id === profileCutId;
-          return (
-            <polygon
-              key={poly.id}
-              points={poly.points}
-              fill={depthColor(poly.id)}
-              stroke={isSelected ? '#4488ff' : depthStroke(poly.id)}
-              strokeWidth={(isSelected ? 3 : 1) / zoom}
-              strokeDasharray={isProfile ? `${6 / zoom} ${3 / zoom}` : undefined}
-              data-shape-id={poly.id}
-              style={{ cursor: 'crosshair' }}
             />
           );
         })}
