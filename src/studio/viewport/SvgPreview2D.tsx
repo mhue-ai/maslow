@@ -43,7 +43,7 @@ export function SvgPreview2D() {
 
     for (const path of paths) {
       for (const shape of path.shapes) {
-        const rawPts = shape.getPoints(64);
+        const rawPts = shape.getPoints(128);
         if (rawPts.length < 3) continue;
 
         // Transform each point from SVG space to material space
@@ -84,8 +84,8 @@ export function SvgPreview2D() {
         //    Simple shapes (< 50 points) are fine at any fill ratio.
         //    Complex shapes (500+ points) with < 40% fill are self-intersecting artifacts.
         const fillRatio = bboxArea > 0 ? polyArea / bboxArea : 1;
-        if (pts.length > 500 && fillRatio < 0.40) continue;
-        if (pts.length > 100 && fillRatio < 0.10) continue;
+        if (pts.length > 1000 && fillRatio < 0.40) continue;
+        if (pts.length > 200 && fillRatio < 0.10) continue;
 
         // Convert to SVG polygon points string
         const pointsStr = pts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
