@@ -65,7 +65,7 @@ export function SvgImportPanel() {
 
   return (
     <div>
-      <h3>SVG Import</h3>
+      <h3><span className="step">2</span> SVG Import</h3>
 
       {warning && <div className="warning">{warning}</div>}
 

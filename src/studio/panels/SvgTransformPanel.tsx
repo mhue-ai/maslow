@@ -35,7 +35,7 @@ export function SvgTransformPanel() {
 
   return (
     <div>
-      <h3>Position & Transform</h3>
+      <h3 data-tip="Move, resize, rotate, and mirror the design on the material surface. Use Copy to tile multiple instances.">Position & Transform</h3>
 
       <p style={{ fontSize: 10, color: '#555', marginBottom: 6 }}>
         Arrow keys: nudge 1mm (Shift: 10mm). Click material to place.

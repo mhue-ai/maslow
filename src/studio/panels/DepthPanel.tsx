@@ -54,7 +54,7 @@ export function DepthPanel() {
 
   return (
     <div>
-      <h3>Shapes ({paths.length})</h3>
+      <h3 data-tip="Each shape has a depth level. 0mm = face (no cut). Higher = deeper pocket. Click shapes in the design to set depth.">Shapes ({paths.length})</h3>
 
       <p style={{ fontSize: 10, color: '#555', marginBottom: 6 }}>
         Click = deepen 2mm. Shift+click = reset.

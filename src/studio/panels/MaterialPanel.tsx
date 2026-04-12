@@ -56,9 +56,9 @@ export function MaterialPanel() {
 
   return (
     <div>
-      <h3>Material</h3>
+      <h3><span className="step">1</span> Material</h3>
 
-      <label>
+      <label data-tip="Select a common material to auto-fill dimensions and recommended cutting speeds.">
         Preset
         <select
           value=""

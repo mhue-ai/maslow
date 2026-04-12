@@ -260,3 +260,49 @@
   color: #f0a050;
   margin-bottom: 8px;
 }
+
+/* Tooltips — native title attribute enhanced with CSS */
+[data-tip] {
+  position: relative;
+}
+
+[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 100;
+  background: #222;
+  color: #ddd;
+  font-size: 11px;
+  font-weight: 400;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid #444;
+  white-space: normal;
+  width: 200px;
+  line-height: 1.4;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  pointer-events: none;
+  animation: tipFade 0.15s ease-in;
+}
+
+@keyframes tipFade {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Section headers with step numbers */
+.panel h3 .step {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  line-height: 16px;
+  text-align: center;
+  background: #2a4a7a;
+  color: #fff;
+  border-radius: 50%;
+  font-size: 9px;
+  margin-right: 4px;
+  vertical-align: middle;
+}

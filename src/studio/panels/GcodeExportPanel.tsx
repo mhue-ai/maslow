@@ -26,7 +26,7 @@ export function GcodeExportPanel() {
   if (paths.length === 0) {
     return (
       <div>
-        <h3>G-Code Export</h3>
+        <h3><span className="step">4</span> G-Code</h3>
         <p style={{ fontSize: 11, color: '#555' }}>Import SVG and set shape levels first</p>
       </div>
     );
@@ -68,7 +68,7 @@ export function GcodeExportPanel() {
 
   return (
     <div>
-      <h3>G-Code Export</h3>
+      <h3><span className="step">4</span> G-Code</h3>
 
       {error && <div className="warning">{error}</div>}
 
