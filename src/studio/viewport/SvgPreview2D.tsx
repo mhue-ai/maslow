@@ -91,7 +91,13 @@ export function SvgPreview2D() {
       if (!shapeId) return;
 
       if (shape instanceof SVGGeometryElement) {
+        // Temporarily set fill to solid for hit testing —
+        // isPointInFill returns false for fill="none" elements
+        const origFill = shape.getAttribute('fill');
+        shape.setAttribute('fill', 'black');
         const isInside = shape.isPointInFill(svgCoord);
+        shape.setAttribute('fill', origFill ?? 'none');
+
         if (isInside) {
           const bbox = shape.getBBox();
           const area = bbox.width * bbox.height;
@@ -321,8 +327,8 @@ function enhanceSvg(
       // Face (level 0) — white/bright, clearly raised
       const currentFill = el.getAttribute('fill');
       if (currentFill === 'none' || !currentFill) {
-        // Outline-only: transparent fill for hit detection, visible grey stroke
-        el.setAttribute('fill', 'none');
+        // Outline-only: near-invisible fill for CLICK detection, visible grey stroke
+        el.setAttribute('fill', 'rgba(255,255,255,0.01)');
         if (hasStroke) el.setAttribute('stroke', '#aaaaaa');
       } else {
         // Filled element: white
