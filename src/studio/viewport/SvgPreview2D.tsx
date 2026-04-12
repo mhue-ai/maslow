@@ -1,6 +1,7 @@
-import { useRef, useState, useCallback, useMemo } from 'react';
+import { useRef, useState, useCallback, useMemo, useEffect } from 'react';
 import { useDesignStore } from '../../store/designStore';
 import { computeSvgTransform, transformPoint } from '../../svg/svgScaler';
+import * as ClipperLib from 'js-angusj-clipper';
 
 /**
  * Clean 2D shape renderer — builds a fresh SVG from extracted polygon data.
@@ -35,10 +36,19 @@ export function SvgPreview2D() {
     return computeSvgTransform(svgBounds, material, toolConfig.workOrigin, svgTransformOverride, toolConfig.edgeClearance);
   }, [svgBounds, material, toolConfig.workOrigin, svgTransformOverride, toolConfig.edgeClearance]);
 
+  // Clipper instance for polygon simplification
+  const [clipper, setClipper] = useState<ClipperLib.ClipperLibWrapper | null>(null);
+  useEffect(() => {
+    ClipperLib.loadNativeClipperLibInstanceAsync(
+      ClipperLib.NativeClipperLibRequestedFormat.WasmWithAsmJsFallback as any
+    ).then(setClipper).catch(() => {});
+  }, []);
+
   // Extract clean polygon data from Three.js shapes
   const shapePolygons = useMemo(() => {
     if (!transform || paths.length === 0) return [];
 
+    const SCALE = 10000;
     const polys: { id: string; name: string; points: string; bbox: { x: number; y: number; w: number; h: number } }[] = [];
 
     for (const path of paths) {
@@ -87,20 +97,45 @@ export function SvgPreview2D() {
         if (pts.length > 1000 && fillRatio < 0.40) continue;
         if (pts.length > 200 && fillRatio < 0.10) continue;
 
-        // Convert to SVG polygon points string
-        const pointsStr = pts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
+        // Use Clipper to simplify self-intersecting polygons into clean shapes
+        let cleanPts = pts;
+        if (clipper && pts.length > 50) {
+          try {
+            const scaled = pts.map(p => ({ x: Math.round(p.x * SCALE), y: Math.round(p.y * SCALE) }));
+            const simplified = clipper.simplifyPolygon(scaled, ClipperLib.PolyFillType.EvenOdd);
+            if (simplified && simplified.length > 0 && simplified[0].length >= 3) {
+              // Use the largest simplified polygon
+              let best = simplified[0];
+              for (const s of simplified) {
+                if (s.length > best.length) best = s;
+              }
+              cleanPts = best.map(p => ({ x: p.x / SCALE, y: p.y / SCALE }));
+            }
+          } catch { /* fallback to original pts */ }
+        }
+
+        // Recompute bbox from cleaned points
+        let cMinX = Infinity, cMaxX = -Infinity, cMinY = Infinity, cMaxY = -Infinity;
+        for (const p of cleanPts) {
+          if (p.x < cMinX) cMinX = p.x;
+          if (p.x > cMaxX) cMaxX = p.x;
+          if (p.y < cMinY) cMinY = p.y;
+          if (p.y > cMaxY) cMaxY = p.y;
+        }
+
+        const pointsStr = cleanPts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
 
         polys.push({
           id: path.data.id,
           name: path.data.name,
           points: pointsStr,
-          bbox: { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
+          bbox: { x: cMinX, y: cMinY, w: cMaxX - cMinX, h: cMaxY - cMinY },
         });
         break; // Only use the first shape per path (primary outline)
       }
     }
     return polys;
-  }, [paths, transform]);
+  }, [paths, transform, clipper]);
 
   // Detect rings (gaps between nested shapes)
   const ringPolygons = useMemo(() => {
