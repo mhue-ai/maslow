@@ -1,17 +1,18 @@
-import { useRef, useState, useCallback, useMemo, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { useDesignStore } from '../../store/designStore';
-import { computeSvgTransform, transformPoint } from '../../svg/svgScaler';
-import { traceShapes, type TracedShape } from '../../svg/shapeTracer';
 
 /**
- * Clean 2D shape renderer — builds a fresh SVG from extracted polygon data.
- * No dangerouslySetInnerHTML, no DOM manipulation of the original SVG.
- * Each shape is a clean <polygon> element colored by depth level.
+ * Native SVG renderer — displays the normalized SVG with perfect fidelity.
+ * Depth is indicated via CSS brightness filters (no polygon conversion).
+ *
+ * Architecture (validated by jscut, LaserWeb4, OpenBuilds, Easel):
+ * - DISPLAY: native SVG rendering (browser handles all curves perfectly)
+ * - TOOLPATHS: separate SVGLoader polygon approximation (in gcodeGenerator)
+ * - These layers are intentionally decoupled — industry standard pattern
  */
 export function SvgPreview2D() {
-  const paths = useDesignStore((s) => s.paths);
+  const svgText = useDesignStore((s) => s.svgText);
   const material = useDesignStore((s) => s.material);
-  const svgBounds = useDesignStore((s) => s.svgBounds);
   const shapeLevels = useDesignStore((s) => s.shapeLevels);
   const selectedPathId = useDesignStore((s) => s.selectedPathId);
   const selectPath = useDesignStore((s) => s.selectPath);
@@ -20,120 +21,110 @@ export function SvgPreview2D() {
   const setSvgTransformOverride = useDesignStore((s) => s.setSvgTransformOverride);
   const profileCutId = useDesignStore((s) => s.profileCutId);
   const toolConfig = useDesignStore((s) => s.toolConfig);
+  const shapeRegistry = useDesignStore((s) => s.shapeRegistry);
 
-  // Zoom/pan state
+  const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragMode, setDragMode] = useState<'none' | 'pan' | 'move'>('none');
   const dragStart = useRef({ x: 0, y: 0, ox: 0, oy: 0 });
-  const svgRef = useRef<SVGSVGElement>(null);
 
   const STEP_MM = 2;
 
-  // Compute the SVG transform (SVG coords → material coords)
-  const transform = useMemo(() => {
-    if (!svgBounds) return null;
-    return computeSvgTransform(svgBounds, material, toolConfig.workOrigin, svgTransformOverride, toolConfig.edgeClearance);
-  }, [svgBounds, material, toolConfig.workOrigin, svgTransformOverride, toolConfig.edgeClearance]);
-
-  // Trace shapes from SVG: rasterize each shape then trace clean boundary
-  const svgText = useDesignStore((s) => s.svgText);
-  const shapeRegistry = useDesignStore((s) => s.shapeRegistry);
-  const [tracedShapes, setTracedShapes] = useState<TracedShape[]>([]);
+  // Build the enhanced SVG with depth styling via CSS brightness filters
+  const [enhancedSvg, setEnhancedSvg] = useState<string>('');
 
   useEffect(() => {
     if (!svgText || shapeRegistry.length === 0) {
-      setTracedShapes([]);
+      setEnhancedSvg('');
       return;
     }
-    // Trace shapes asynchronously (renders each to canvas, traces boundary)
-    traceShapes(svgText, shapeRegistry, 2000).then(setTracedShapes).catch(() => setTracedShapes([]));
-  }, [svgText, shapeRegistry]);
 
-  // Convert traced shapes to polygon data for rendering
-  const shapePolygons = useMemo(() => {
-    if (!transform || tracedShapes.length === 0) return [];
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgText, 'image/svg+xml');
+    const svg = doc.querySelector('svg');
+    if (!svg) return;
 
-    return tracedShapes.map((ts) => {
-      // Transform traced polygon from SVG viewBox coords to material space
-      const pts = ts.polygon.map((p) => {
-        const tp = transformPoint(p.x, p.y, transform);
-        return { x: tp.x, y: -tp.y }; // Negate Y for SVG rendering
-      });
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
 
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      for (const p of pts) {
-        if (p.x < minX) minX = p.x;
-        if (p.x > maxX) maxX = p.x;
-        if (p.y < minY) minY = p.y;
-        if (p.y > maxY) maxY = p.y;
+    // Walk through registry and assign depth styling to each element
+    const allElements = svg.querySelectorAll('path, polygon, polyline, rect, circle, ellipse, line, text');
+    let regIdx = 0;
+
+    allElements.forEach((el) => {
+      const entry = shapeRegistry[regIdx];
+      regIdx++;
+      if (!entry) return;
+
+      if (entry.isText) {
+        // Text: not clickable, show at face level
+        el.setAttribute('style', 'pointer-events: none;');
+        return;
       }
 
-      return {
-        id: ts.id,
-        name: ts.name,
-        points: pts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' '),
-        bbox: { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
-      };
+      el.setAttribute('data-shape-id', entry.id);
+
+      const level = shapeLevels.get(entry.id)?.level ?? 0;
+      const isSelected = selectedPathId === entry.id;
+      const isProfile = entry.id === profileCutId;
+      const thickness = material.thickness;
+
+      // Depth indication via CSS brightness filter
+      // face = full brightness, deeper = darker, through = very dark
+      let brightness = 1.0;
+      if (isProfile) {
+        brightness = 0.15;
+      } else if (level >= thickness) {
+        brightness = 0.1;
+      } else if (level > 0) {
+        brightness = 1.0 - (level / thickness) * 0.8; // 1.0 → 0.2
+      }
+
+      const styles: string[] = [
+        'cursor: crosshair',
+        `filter: brightness(${brightness.toFixed(2)})`,
+      ];
+
+      // Profile cut: orange dashed outline
+      if (isProfile) {
+        styles.push('stroke: #ff8800 !important');
+        styles.push('stroke-dasharray: 8 4');
+        styles.push('stroke-width: 2');
+      }
+
+      // Selection highlight
+      if (isSelected) {
+        styles.push('filter: brightness(' + brightness.toFixed(2) + ') drop-shadow(0 0 4px #4488ff) drop-shadow(0 0 8px #4488ff)');
+        styles.push('stroke: #4488ff !important');
+        styles.push('stroke-width: 2');
+      }
+
+      el.setAttribute('style', styles.join('; '));
     });
-  }, [tracedShapes, transform]);
 
-  // Detect rings (gaps between nested shapes)
-  const ringPolygons = useMemo(() => {
-    if (shapePolygons.length < 2) return [];
+    setEnhancedSvg(new XMLSerializer().serializeToString(svg));
+  }, [svgText, shapeRegistry, shapeLevels, selectedPathId, profileCutId, material.thickness]);
 
-    // Sort by area, largest first
-    const sorted = [...shapePolygons].sort((a, b) => (b.bbox.w * b.bbox.h) - (a.bbox.w * a.bbox.h));
-    const rings: { id: string; outerPoints: string; innerPoints: string }[] = [];
-    let ringIdx = 0;
-
-    for (let i = 0; i < sorted.length; i++) {
-      const outer = sorted[i];
-      for (let j = i + 1; j < sorted.length; j++) {
-        const inner = sorted[j];
-        // Check bbox containment
-        if (inner.bbox.x >= outer.bbox.x &&
-            inner.bbox.y >= outer.bbox.y &&
-            inner.bbox.x + inner.bbox.w <= outer.bbox.x + outer.bbox.w &&
-            inner.bbox.y + inner.bbox.h <= outer.bbox.y + outer.bbox.h) {
-          rings.push({
-            id: `ring-${ringIdx++}`,
-            outerPoints: outer.points,
-            innerPoints: inner.points,
-          });
-          break; // Only first (largest) child per outer
-        }
-      }
-      if (rings.length >= 5) break; // Limit to prevent excessive rings
-    }
-    return rings;
-  }, [shapePolygons]);
-
-  // Pre-create ring store entries
-  useMemo(() => {
-    for (const ring of ringPolygons) {
-      if (!shapeLevels.has(ring.id)) {
-        setShapeLevel(ring.id, 0);
-      }
-    }
-  }, [ringPolygons.length]);
-
-  // Step a shape deeper: 0 → 2 → 4 → ... → thickness → 0
+  // Step deeper on click
   const stepDeeper = useCallback((shapeId: string) => {
     const current = shapeLevels.get(shapeId)?.level ?? 0;
-    const thickness = material.thickness;
     const next = current + STEP_MM;
-    setShapeLevel(shapeId, next > thickness ? 0 : next);
+    setShapeLevel(shapeId, next > material.thickness ? 0 : next);
   }, [shapeLevels, setShapeLevel, material.thickness]);
 
-  // Click handler
+  // Click handler — find clicked element's shape ID
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (dragMode !== 'none') return;
 
     const target = e.target as Element;
-    const shapeId = (target as HTMLElement).dataset?.shapeId;
+    let el: Element | null = target;
+    while (el && !(el as HTMLElement).dataset?.shapeId) {
+      el = el.parentElement;
+    }
 
-    if (shapeId) {
+    if (el) {
+      const shapeId = (el as HTMLElement).dataset.shapeId!;
       selectPath(shapeId);
       if (e.shiftKey) {
         setShapeLevel(shapeId, 0);
@@ -143,36 +134,34 @@ export function SvgPreview2D() {
       return;
     }
 
-    // Paint-bucket: find smallest enclosing shape via SVG hit testing
-    if (!svgRef.current) return;
-    const svgEl = svgRef.current;
-    const pt = svgEl.createSVGPoint();
+    // Paint-bucket: find element at click point using the rendered SVG
+    const svgEl = containerRef.current?.querySelector('svg');
+    if (!svgEl) return;
+    const pt = (svgEl as SVGSVGElement).createSVGPoint();
     pt.x = e.clientX;
     pt.y = e.clientY;
-    const ctm = svgEl.getScreenCTM();
+    const ctm = (svgEl as SVGSVGElement).getScreenCTM();
     if (!ctm) return;
     const svgCoord = pt.matrixTransform(ctm.inverse());
 
+    // Check all shape elements for containment
+    const shapes = svgEl.querySelectorAll('[data-shape-id]');
     let bestId: string | null = null;
     let bestArea = Infinity;
 
-    const clickables = svgEl.querySelectorAll('[data-shape-id]');
-    clickables.forEach((shape) => {
+    shapes.forEach((shape) => {
       const sid = (shape as HTMLElement).dataset.shapeId;
-      if (!sid) return;
-      if (shape instanceof SVGGeometryElement) {
-        const origFill = shape.getAttribute('fill');
-        shape.setAttribute('fill', 'black');
-        const inside = shape.isPointInFill(svgCoord);
-        shape.setAttribute('fill', origFill ?? 'none');
-        if (inside) {
+      if (!sid || !(shape instanceof SVGGeometryElement)) return;
+      const origFill = shape.getAttribute('fill');
+      shape.setAttribute('fill', 'black');
+      const inside = shape.isPointInFill(svgCoord);
+      shape.setAttribute('fill', origFill ?? 'none');
+      if (inside) {
+        try {
           const bbox = shape.getBBox();
           const area = bbox.width * bbox.height;
-          if (area < bestArea) {
-            bestArea = area;
-            bestId = sid;
-          }
-        }
+          if (area < bestArea) { bestArea = area; bestId = sid; }
+        } catch {}
       }
     });
 
@@ -192,7 +181,7 @@ export function SvgPreview2D() {
     setZoom((z) => Math.max(0.2, Math.min(10, z * (e.deltaY > 0 ? 0.9 : 1.1))));
   }, []);
 
-  // Pan/Move
+  // Pan / Move
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 1 || (e.button === 0 && e.ctrlKey)) {
       e.preventDefault();
@@ -212,8 +201,9 @@ export function SvgPreview2D() {
     if (dragMode === 'pan') {
       setPan({ x: dragStart.current.ox + dx, y: dragStart.current.oy + dy });
     } else if (dragMode === 'move') {
-      const containerWidth = svgRef.current?.getBoundingClientRect().width ?? 500;
-      const mmPerPixel = material.width / containerWidth;
+      const el = containerRef.current?.querySelector('.svg-container');
+      const w = el?.getBoundingClientRect().width ?? 500;
+      const mmPerPixel = material.width / w;
       setSvgTransformOverride({
         offsetX: dragStart.current.ox + dx * mmPerPixel,
         offsetY: dragStart.current.oy - dy * mmPerPixel,
@@ -224,27 +214,7 @@ export function SvgPreview2D() {
   const handleMouseUp = useCallback(() => setDragMode('none'), []);
   const resetView = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
 
-  // Depth → color
-  const depthColor = (shapeId: string): string => {
-    const level = shapeLevels.get(shapeId)?.level ?? 0;
-    const isProfile = shapeId === profileCutId;
-    if (isProfile) return '#1a1a1a';
-    if (level <= 0) return '#ffffff';
-    if (level >= material.thickness) return '#111111';
-    const ratio = Math.min(1, level / material.thickness);
-    const grey = Math.round(240 - ratio * 200);
-    return `rgb(${grey},${grey},${grey})`;
-  };
-
-  const depthStroke = (shapeId: string): string => {
-    const isProfile = shapeId === profileCutId;
-    if (isProfile) return '#ff8800';
-    const level = shapeLevels.get(shapeId)?.level ?? 0;
-    if (level <= 0) return '#999999';
-    return '#666666';
-  };
-
-  if (paths.length === 0) {
+  if (!svgText) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#555', fontSize: 14 }}>
         Import an SVG to see the design
@@ -252,13 +222,13 @@ export function SvgPreview2D() {
     );
   }
 
-  // Viewport: material dimensions define the SVG viewBox
-  const vbX = -material.width / 2;
-  const vbY = -material.height / 2;
   const ec = toolConfig.edgeClearance;
+  const ecPctX = (ec / material.width * 100).toFixed(2);
+  const ecPctY = (ec / material.height * 100).toFixed(2);
 
   return (
     <div
+      ref={containerRef}
       onClick={handleClick}
       onWheel={handleWheel}
       onMouseDown={handleMouseDown}
@@ -267,7 +237,8 @@ export function SvgPreview2D() {
       onMouseLeave={handleMouseUp}
       style={{
         width: '100%', height: '100%', overflow: 'hidden',
-        background: '#1a1a2e', position: 'relative', cursor: dragMode !== 'none' ? 'grabbing' : 'crosshair',
+        background: '#1a1a2e', position: 'relative',
+        cursor: dragMode !== 'none' ? 'grabbing' : 'crosshair',
       }}
     >
       {/* Zoom controls */}
@@ -283,93 +254,52 @@ export function SvgPreview2D() {
         Click = deepen 2mm. Shift+click = reset. Alt+drag = move. Ctrl+drag = pan. Scroll = zoom.
       </div>
 
-      {/* Clean SVG built from polygon data */}
-      <svg
-        ref={svgRef}
-        viewBox={`${vbX} ${vbY} ${material.width} ${material.height}`}
-        style={{
-          position: 'absolute', top: '50%', left: '50%',
-          width: `${Math.min(90, 80 * (material.width / material.height))}%`,
-          maxHeight: '85%',
-          transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-          transformOrigin: 'center center',
-          transition: dragMode !== 'none' ? 'none' : 'transform 0.1s ease-out',
-        }}
-      >
-        {/* Material background */}
-        <rect x={vbX} y={vbY} width={material.width} height={material.height}
-          fill="#c4a66a" stroke="#8a7a4a" strokeWidth={2 / zoom} />
+      {/* Material surface with native SVG */}
+      <div style={{
+        position: 'absolute', top: '50%', left: '50%',
+        transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+        transformOrigin: 'center center',
+        transition: dragMode !== 'none' ? 'none' : 'transform 0.1s ease-out',
+      }}>
+        <div style={{
+          background: '#c4a66a',
+          width: `${Math.min(800, material.width * 0.5)}px`,
+          aspectRatio: `${material.width} / ${material.height}`,
+          position: 'relative',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          border: '2px solid #8a7a4a',
+        }}>
+          {/* Native SVG rendered with CSS brightness for depth */}
+          <div
+            className="svg-container"
+            style={{
+              position: 'absolute',
+              left: `${ecPctX}%`, top: `${ecPctY}%`,
+              width: `${(100 - 2 * parseFloat(ecPctX)).toFixed(2)}%`,
+              height: `${(100 - 2 * parseFloat(ecPctY)).toFixed(2)}%`,
+              transform: `rotate(${svgTransformOverride.rotation}deg) scaleX(${svgTransformOverride.mirrorX ? -1 : 1}) scaleY(${svgTransformOverride.mirrorY ? -1 : 1})`,
+            }}
+            dangerouslySetInnerHTML={{ __html: enhancedSvg }}
+          />
 
-        {/* Edge clearance zone */}
-        <rect x={vbX + ec} y={vbY + ec} width={material.width - 2 * ec} height={material.height - 2 * ec}
-          fill="none" stroke="#ff444466" strokeWidth={1.5 / zoom} strokeDasharray={`${6 / zoom} ${4 / zoom}`} />
+          {/* Edge clearance overlay */}
+          <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+            <rect x={`${ecPctX}%`} y={`${ecPctY}%`}
+              width={`${(100 - 2 * parseFloat(ecPctX)).toFixed(2)}%`}
+              height={`${(100 - 2 * parseFloat(ecPctY)).toFixed(2)}%`}
+              fill="none" stroke="#ff444466" strokeWidth="1.5" strokeDasharray="6 4" />
+            <line x1="50%" y1="0" x2="50%" y2="100%" stroke="#ff880033" strokeWidth="0.5" strokeDasharray="4 4" />
+            <line x1="0" y1="50%" x2="100%" y2="50%" stroke="#ff880033" strokeWidth="0.5" strokeDasharray="4 4" />
+            <text x={`${parseFloat(ecPctX) + 1}%`} y={`${parseFloat(ecPctY) + 4}%`}
+              fill="#ff444488" fontSize="8" fontFamily="sans-serif">{ec}mm clearance</text>
+          </svg>
 
-        {/* Center crosshair */}
-        <line x1={0} y1={vbY} x2={0} y2={vbY + material.height}
-          stroke="#ff880033" strokeWidth={0.5 / zoom} strokeDasharray={`${4 / zoom} ${4 / zoom}`} />
-        <line x1={vbX} y1={0} x2={vbX + material.width} y2={0}
-          stroke="#ff880033" strokeWidth={0.5 / zoom} strokeDasharray={`${4 / zoom} ${4 / zoom}`} />
-
-        {/* Clearance label */}
-        <text x={vbX + ec + 2} y={vbY + ec + 8} fontSize={6} fill="#ff444488">{ec}mm clearance</text>
-
-        {/* Dimension label */}
-        <text x={0} y={vbY + material.height + 12} textAnchor="middle" fontSize={6} fill="#666">
-          {material.width} x {material.height} x {material.thickness} mm
-        </text>
-
-        {/* Render order: largest shapes first (painter's algorithm),
-            then rings as compound paths (outer boundary + inner hole). */}
-        {[...shapePolygons]
-          .sort((a, b) => (b.bbox.w * b.bbox.h) - (a.bbox.w * a.bbox.h))
-          .map((poly) => {
-            const isSelected = selectedPathId === poly.id;
-            const isProfile = poly.id === profileCutId;
-            return (
-              <polygon
-                key={poly.id}
-                points={poly.points}
-                fill={depthColor(poly.id)}
-                stroke={isSelected ? '#4488ff' : depthStroke(poly.id)}
-                strokeWidth={(isSelected ? 3 : 1) / zoom}
-                strokeDasharray={isProfile ? `${6 / zoom} ${3 / zoom}` : undefined}
-                data-shape-id={poly.id}
-                style={{ cursor: 'crosshair' }}
-              />
-            );
-          })}
-
-        {/* Ring shapes as compound paths: outer boundary + reversed inner = gap only.
-            Uses fill-rule="evenodd" so the inner area is a hole. */}
-        {/* Ring shapes: only render when selected or at non-zero depth.
-            At face level, the gap is naturally visible as material color
-            between the dark profile cut and the white inner shapes. */}
-        {ringPolygons.map((ring) => {
-          const level = shapeLevels.get(ring.id)?.level ?? 0;
-          const isSelected = selectedPathId === ring.id;
-
-          // At face level and not selected: invisible (click through to paint-bucket)
-          if (level <= 0 && !isSelected) return null;
-
-          const outerCoords = ring.outerPoints.split(' ').map(s => s.split(',').map(Number));
-          const innerCoords = ring.innerPoints.split(' ').map(s => s.split(',').map(Number)).reverse();
-          const outerD = `M${outerCoords.map(c => c.join(',')).join(' L')} Z`;
-          const innerD = `M${innerCoords.map(c => c.join(',')).join(' L')} Z`;
-
-          return (
-            <path
-              key={ring.id}
-              d={`${outerD} ${innerD}`}
-              fillRule="evenodd"
-              fill={isSelected && level <= 0 ? 'rgba(100,150,255,0.2)' : depthColor(ring.id)}
-              stroke={isSelected ? '#4488ff' : '#666666'}
-              strokeWidth={(isSelected ? 2 : 0.5) / zoom}
-              data-shape-id={ring.id}
-              style={{ cursor: 'crosshair', pointerEvents: 'all' }}
-            />
-          );
-        })}
-      </svg>
+          {/* Dimension label */}
+          <div style={{ position: 'absolute', bottom: -20, left: 0, right: 0, textAlign: 'center', fontSize: 10, color: '#666' }}>
+            {material.width} x {material.height} x {material.thickness} mm
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
