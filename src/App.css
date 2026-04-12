@@ -212,12 +212,6 @@
 }
 
 /* Depth controls */
-.depth-controls {
-  display: flex;
-  gap: 4px;
-  margin-top: 8px;
-}
-
 .depth-btn {
   flex: 1;
   padding: 4px;

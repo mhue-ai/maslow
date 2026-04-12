@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { useDesignStore } from '../../store/designStore';
 import type { SvgShapeEntry } from '../../svg/svgParser';
+import type { ShapeLevel, Material } from '../../types/design';
 
 /**
  * Native 2D SVG preview with zoom/pan, paint-bucket region selection,
@@ -230,11 +231,11 @@ export function SvgPreview2D() {
  */
 function enhanceSvg(
   svgText: string,
-  shapeLevels: Map<string, { level: number }>,
+  shapeLevels: Map<string, ShapeLevel>,
   selectedPathId: string | null,
   profileCutId: string | null,
   bitDiameter: number,
-  material: { width: number; height: number; thickness: number },
+  material: Material,
   shapeRegistry: SvgShapeEntry[]
 ): string {
   const parser = new DOMParser();

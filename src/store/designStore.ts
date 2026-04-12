@@ -58,9 +58,8 @@ interface DesignState {
   toolConfig: ToolConfig;
   setToolConfig: (c: Partial<ToolConfig>) => void;
 
-  // Profile cut — outermost shape, always last operation
+  // Profile cut — outermost shape, always last operation (auto-set on SVG import)
   profileCutId: string | null;
-  setProfileCutId: (id: string | null) => void;
 
   // Generated G-code
   gcode: string | null;
@@ -240,7 +239,6 @@ export const useDesignStore = create<DesignState>((set, get) => ({
   },
 
   profileCutId: null,
-  setProfileCutId: (id) => set({ profileCutId: id }),
 
   showCutPreview: false,
   toggleCutPreview: () => set((s) => ({ showCutPreview: !s.showCutPreview })),
