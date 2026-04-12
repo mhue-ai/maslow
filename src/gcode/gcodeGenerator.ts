@@ -77,15 +77,26 @@ async function generateInstance(
         ));
       } else {
         // Relief: pocket clearing with island avoidance
-        // Detect shapes inside this pocket that are at a shallower depth
         try {
           const region = await detectIslands(shapeId, level, paths, shapeLevels, t);
           if (region.islandIds.length > 0) {
-            lines.push(`; Islands detected: ${region.islandIds.join(', ')}`);
+            lines.push(`; Islands avoided: ${region.islandIds.join(', ')}`);
           }
-          lines.push(...generatePocketGcode(shape, cutDepth, toolConfig, t, region.pocketPolygons));
-        } catch {
-          // Fallback: pocket without island avoidance
+          if (region.pocketPolygons.length > 0) {
+            // Generate pocket for each disjoint region
+            for (const pocketPoly of region.pocketPolygons) {
+              lines.push(...generatePocketGcode(shape, cutDepth, toolConfig, t, [pocketPoly]));
+            }
+          } else if (region.islandIds.length > 0) {
+            // Islands cover entire pocket — skip (nothing to cut)
+            lines.push('; Pocket entirely covered by islands — skipping');
+          } else {
+            lines.push(...generatePocketGcode(shape, cutDepth, toolConfig, t));
+          }
+        } catch (err) {
+          // Log error but still generate pocket (safety: better to cut wrong than crash)
+          const msg = err instanceof Error ? err.message : String(err);
+          lines.push(`; WARNING: Island detection failed (${msg}) — cutting without avoidance`);
           lines.push(...generatePocketGcode(shape, cutDepth, toolConfig, t));
         }
       }

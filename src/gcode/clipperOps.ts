@@ -19,10 +19,13 @@ let clipperInstance: ClipperLib.ClipperLibWrapper | null = null;
 
 async function getClipper(): Promise<ClipperLib.ClipperLibWrapper> {
   if (!clipperInstance) {
-    clipperInstance = await ClipperLib.loadNativeClipperLibInstanceAsync(
-      // @ts-ignore — loadNativeClipperLibInstanceAsync accepts format
-      ClipperLib.NativeClipperLibRequestedFormat.WasmWithAsmJsFallback
-    );
+    try {
+      clipperInstance = await ClipperLib.loadNativeClipperLibInstanceAsync(
+        ClipperLib.NativeClipperLibRequestedFormat.WasmWithAsmJsFallback as any
+      );
+    } catch (err) {
+      throw new Error(`ClipperLib failed to initialize: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
   return clipperInstance;
 }
@@ -38,6 +41,7 @@ function fromClipper(data: readonly { x: number; y: number }[]): Point[] {
 /**
  * Compute polygon A minus polygon B (difference).
  * Returns array of result polygons (may be multiple disjoint regions).
+ * Returns empty array if the result is empty (B covers all of A).
  */
 export async function polygonDifference(subject: Point[], clip: Point[]): Promise<Point[][]> {
   const c = await getClipper();
@@ -47,7 +51,10 @@ export async function polygonDifference(subject: Point[], clip: Point[]): Promis
     clipInputs: [{ data: toClipper(clip) }],
     subjectFillType: ClipperLib.PolyFillType.EvenOdd,
   });
-  if (!result) return [subject]; // fallback: return original if clipping fails
+  // null = API error → return original as fallback
+  // empty array = valid result, no geometry remains
+  if (result === null || result === undefined) return [subject];
+  if (result.length === 0) return [];
   return result.map((p) => fromClipper(p));
 }
 
@@ -82,24 +89,35 @@ export async function offsetPolygon(polygon: Point[], distance: number): Promise
 
 /**
  * Test if inner polygon is geometrically inside outer polygon.
- * Uses Clipper's point-in-polygon test on the centroid of the inner polygon.
+ * Tests MULTIPLE points of the inner polygon (not just centroid)
+ * to handle concave shapes correctly.
  */
 export async function isPolygonInside(inner: Point[], outer: Point[]): Promise<boolean> {
   const c = await getClipper();
+  const outerClipper = toClipper(outer);
 
-  // Test centroid of inner polygon
-  let cx = 0, cy = 0;
-  for (const p of inner) { cx += p.x; cy += p.y; }
-  cx /= inner.length;
-  cy /= inner.length;
+  // Test multiple points of the inner polygon — if majority are inside, it's contained
+  const testCount = Math.min(inner.length, 8); // Test up to 8 points
+  const step = Math.max(1, Math.floor(inner.length / testCount));
+  let insideCount = 0;
 
-  const result = c.pointInPolygon({ x: Math.round(cx * SCALE), y: Math.round(cy * SCALE) }, toClipper(outer));
-  return result !== 0; // 0 = outside, 1 = inside, -1 = on edge
+  for (let i = 0; i < inner.length; i += step) {
+    const p = inner[i];
+    const result = c.pointInPolygon(
+      { x: Math.round(p.x * SCALE), y: Math.round(p.y * SCALE) },
+      outerClipper
+    );
+    if (result !== 0) insideCount++; // 1 = inside, -1 = on edge
+  }
+
+  // Consider "inside" if more than half the tested points are inside
+  return insideCount > testCount / 2;
 }
 
 /**
  * Subtract multiple clip polygons from a subject polygon.
  * Used for island avoidance: pocket = outer - island1 - island2 - ...
+ * Returns empty array if all islands cover the entire pocket.
  */
 export async function polygonDifferenceMultiple(subject: Point[], clips: Point[][]): Promise<Point[][]> {
   if (clips.length === 0) return [subject];
@@ -111,6 +129,7 @@ export async function polygonDifferenceMultiple(subject: Point[], clips: Point[]
     clipInputs: clips.map((clip) => ({ data: toClipper(clip) })),
     subjectFillType: ClipperLib.PolyFillType.EvenOdd,
   });
-  if (!result) return [subject];
+  if (result === null || result === undefined) return [subject];
+  if (result.length === 0) return []; // Islands cover entire pocket
   return result.map((p) => fromClipper(p));
 }
