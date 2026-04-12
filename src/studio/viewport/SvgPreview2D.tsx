@@ -349,12 +349,16 @@ export function SvgPreview2D() {
 
         {/* Ring shapes as compound paths: outer boundary + reversed inner = gap only.
             Uses fill-rule="evenodd" so the inner area is a hole. */}
+        {/* Ring shapes: only render when selected or at non-zero depth.
+            At face level, the gap is naturally visible as material color
+            between the dark profile cut and the white inner shapes. */}
         {ringPolygons.map((ring) => {
           const level = shapeLevels.get(ring.id)?.level ?? 0;
           const isSelected = selectedPathId === ring.id;
-          const ringFill = level <= 0 ? '#c4a66a' : depthColor(ring.id);
 
-          // Build compound path: outer points forward, inner points reversed
+          // At face level and not selected: invisible (click through to paint-bucket)
+          if (level <= 0 && !isSelected) return null;
+
           const outerCoords = ring.outerPoints.split(' ').map(s => s.split(',').map(Number));
           const innerCoords = ring.innerPoints.split(' ').map(s => s.split(',').map(Number)).reverse();
           const outerD = `M${outerCoords.map(c => c.join(',')).join(' L')} Z`;
@@ -365,8 +369,8 @@ export function SvgPreview2D() {
               key={ring.id}
               d={`${outerD} ${innerD}`}
               fillRule="evenodd"
-              fill={isSelected && level <= 0 ? 'rgba(100,150,255,0.3)' : ringFill}
-              stroke={isSelected ? '#4488ff' : (level <= 0 ? '#aa885566' : '#666666')}
+              fill={isSelected && level <= 0 ? 'rgba(100,150,255,0.2)' : depthColor(ring.id)}
+              stroke={isSelected ? '#4488ff' : '#666666'}
               strokeWidth={(isSelected ? 2 : 0.5) / zoom}
               data-shape-id={ring.id}
               style={{ cursor: 'crosshair', pointerEvents: 'all' }}
