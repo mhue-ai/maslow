@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Shape } from 'three';
-import type { Material, DepthAssignment, ToolConfig, SvgPathData, CutStrategy, ProfileOffset, SvgTransformOverride, DesignCopy } from '../types/design';
+import type { Material, ShapeLevel, ToolConfig, SvgPathData, SvgTransformOverride, DesignCopy } from '../types/design';
 import type { SvgShapeEntry } from '../svg/svgParser';
 import { DEFAULT_MATERIAL, DEFAULT_TOOL_CONFIG, DEFAULT_SVG_TRANSFORM } from '../types/design';
 
@@ -10,7 +10,7 @@ export interface ParsedPath {
 }
 
 interface HistoryEntry {
-  depthAssignments: Map<string, DepthAssignment>;
+  shapeLevels: Map<string, ShapeLevel>;
   toolConfig: ToolConfig;
   material: Material;
   svgTransformOverride: SvgTransformOverride;
@@ -45,11 +45,9 @@ interface DesignState {
   svgTransformOverride: SvgTransformOverride;
   setSvgTransformOverride: (t: Partial<SvgTransformOverride>) => void;
 
-  // Depth assignments
-  depthAssignments: Map<string, DepthAssignment>;
-  setDepth: (pathId: string, type: DepthAssignment['type'], depth?: number, strategy?: CutStrategy) => void;
-  setStrategy: (pathId: string, strategy: CutStrategy) => void;
-  setProfileOffset: (pathId: string, offset: ProfileOffset) => void;
+  // Shape levels: one number per shape (mm depth from surface)
+  shapeLevels: Map<string, ShapeLevel>;
+  setShapeLevel: (shapeId: string, level: number) => void;
 
   // Operation order (path IDs in cut sequence)
   operationOrder: string[];
@@ -94,7 +92,7 @@ interface DesignState {
 
 function captureHistory(s: DesignState): HistoryEntry {
   return {
-    depthAssignments: new Map(s.depthAssignments),
+    shapeLevels: new Map(s.shapeLevels),
     toolConfig: { ...s.toolConfig },
     material: { ...s.material },
     svgTransformOverride: { ...s.svgTransformOverride },
@@ -134,37 +132,24 @@ export const useDesignStore = create<DesignState>((set, get) => ({
       }
     }
 
-    // Assign all paths to face, except profile cut → through + outline + outside
-    const assignments = new Map<string, DepthAssignment>();
+    // All shapes start at level 0 (face), except profile cut → material thickness
+    const levels = new Map<string, ShapeLevel>();
     const thickness = get().material.thickness;
     for (const path of p) {
-      if (path.data.id === profileId) {
-        assignments.set(path.data.id, {
-          pathId: path.data.id,
-          type: 'through',
-          depth: thickness,
-          strategy: 'outline',
-          profileOffset: 'outside',
-        });
-      } else {
-        assignments.set(path.data.id, {
-          pathId: path.data.id,
-          type: 'face',
-          depth: 0,
-          strategy: 'pocket',
-          profileOffset: 'none',
-        });
-      }
+      levels.set(path.data.id, {
+        shapeId: path.data.id,
+        level: path.data.id === profileId ? thickness : 0,
+      });
     }
 
-    // Operation order: all non-profile paths first, profile cut last
+    // Operation order: all non-profile shapes first, profile cut always last
     const order = p.map((pp) => pp.data.id).filter((id) => id !== profileId);
     if (profileId) order.push(profileId);
 
     set({
       paths: p,
       operationOrder: order,
-      depthAssignments: assignments,
+      shapeLevels: levels,
       profileCutId: profileId,
     });
   },
@@ -186,35 +171,13 @@ export const useDesignStore = create<DesignState>((set, get) => ({
     set((s) => ({ svgTransformOverride: { ...s.svgTransformOverride, ...t } }));
   },
 
-  depthAssignments: new Map(),
-  setDepth: (pathId, type, depth, strategy) => {
+  shapeLevels: new Map(),
+  setShapeLevel: (shapeId, level) => {
     get().pushHistory();
     set((s) => {
-      const next = new Map(s.depthAssignments);
-      const existing = next.get(pathId);
-      const d = type === 'face' ? 0 : type === 'through' ? s.material.thickness : (depth ?? 5);
-      const strat = strategy ?? existing?.strategy ?? (type === 'through' ? 'outline' : 'pocket');
-      const offset = existing?.profileOffset ?? 'none';
-      next.set(pathId, { pathId, type, depth: d, strategy: strat, profileOffset: offset });
-      return { depthAssignments: next };
-    });
-  },
-  setStrategy: (pathId, strategy) => {
-    get().pushHistory();
-    set((s) => {
-      const next = new Map(s.depthAssignments);
-      const existing = next.get(pathId);
-      if (existing) next.set(pathId, { ...existing, strategy });
-      return { depthAssignments: next };
-    });
-  },
-  setProfileOffset: (pathId, profileOffset) => {
-    get().pushHistory();
-    set((s) => {
-      const next = new Map(s.depthAssignments);
-      const existing = next.get(pathId);
-      if (existing) next.set(pathId, { ...existing, profileOffset });
-      return { depthAssignments: next };
+      const next = new Map(s.shapeLevels);
+      next.set(shapeId, { shapeId, level: Math.max(0, level) });
+      return { shapeLevels: next };
     });
   },
 
@@ -299,7 +262,7 @@ export const useDesignStore = create<DesignState>((set, get) => ({
       if (s.historyIndex < 0) return s;
       const entry = s.history[s.historyIndex];
       return {
-        depthAssignments: new Map(entry.depthAssignments),
+        shapeLevels: new Map(entry.shapeLevels),
         toolConfig: { ...entry.toolConfig },
         material: { ...entry.material },
         svgTransformOverride: { ...entry.svgTransformOverride },
@@ -314,7 +277,7 @@ export const useDesignStore = create<DesignState>((set, get) => ({
       if (nextIdx >= s.history.length) return s;
       const entry = s.history[nextIdx];
       return {
-        depthAssignments: new Map(entry.depthAssignments),
+        shapeLevels: new Map(entry.shapeLevels),
         toolConfig: { ...entry.toolConfig },
         material: { ...entry.material },
         svgTransformOverride: { ...entry.svgTransformOverride },

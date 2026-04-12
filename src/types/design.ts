@@ -4,17 +4,18 @@ export interface Material {
   thickness: number; // mm
 }
 
-export type DepthType = 'face' | 'relief' | 'through';
-export type CutStrategy = 'pocket' | 'outline';
-export type ProfileOffset = 'none' | 'inside' | 'outside';
 export type WorkOrigin = 'center' | 'bottom-left' | 'top-left';
 
-export interface DepthAssignment {
-  pathId: string;
-  type: DepthType;
-  depth: number;
-  strategy: CutStrategy;
-  profileOffset: ProfileOffset; // bit offset for outline/profile cuts
+/**
+ * ShapeLevel: one number per shape — its depth level in mm.
+ * Everything else (cut strategy, offset, pocket vs profile) is auto-derived:
+ * - level 0: face (no cut)
+ * - 0 < level < thickness: relief pocket, cut inside boundary
+ * - level >= thickness: through-cut (outside for profile, inside for holes)
+ */
+export interface ShapeLevel {
+  shapeId: string;
+  level: number; // mm: 0 = face, positive = relief depth, thickness = through
 }
 
 export interface SvgPathData {

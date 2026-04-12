@@ -1,33 +1,30 @@
 import { useDesignStore } from './designStore';
 import { parseSvg } from '../svg/svgParser';
 import { svgToShapes } from '../svg/svgToShapes';
-import type { Material, DepthAssignment, ToolConfig, SvgTransformOverride, DesignCopy } from '../types/design';
+import type { Material, ShapeLevel, ToolConfig, SvgTransformOverride, DesignCopy } from '../types/design';
 import { DEFAULT_SVG_TRANSFORM } from '../types/design';
 
 interface ProjectFile {
-  version: 1;
+  version: 2;
   name: string;
   material: Material;
   svgText: string | null;
-  depthAssignments: DepthAssignment[];
+  shapeLevels: { shapeId: string; level: number }[];
   toolConfig: ToolConfig;
   svgTransformOverride?: SvgTransformOverride;
   operationOrder?: string[];
   designCopies?: DesignCopy[];
 }
 
-/**
- * Save current design state as a downloadable .maslow.json file.
- */
 export function saveProject(name: string): void {
   const state = useDesignStore.getState();
 
   const project: ProjectFile = {
-    version: 1,
+    version: 2,
     name,
     material: state.material,
     svgText: state.svgText,
-    depthAssignments: Array.from(state.depthAssignments.values()),
+    shapeLevels: Array.from(state.shapeLevels.values()),
     toolConfig: state.toolConfig,
     svgTransformOverride: state.svgTransformOverride,
     operationOrder: state.operationOrder,
@@ -44,21 +41,14 @@ export function saveProject(name: string): void {
   URL.revokeObjectURL(url);
 }
 
-/**
- * Load a project from a .maslow.json file and restore all state.
- */
 export async function loadProject(file: File): Promise<string | null> {
   const text = await file.text();
-  let project: ProjectFile;
+  let project: any;
 
   try {
     project = JSON.parse(text);
   } catch {
     return 'Invalid JSON file';
-  }
-
-  if (!project.version || project.version !== 1) {
-    return 'Unsupported project version';
   }
 
   if (!project.material || !project.toolConfig) {
@@ -67,22 +57,18 @@ export async function loadProject(file: File): Promise<string | null> {
 
   const store = useDesignStore.getState();
 
-  // Restore material and tool config
   store.setMaterial(project.material);
   store.setToolConfig(project.toolConfig);
-
-  // Restore SVG transform override
   store.setSvgTransformOverride(project.svgTransformOverride ?? DEFAULT_SVG_TRANSFORM);
 
-  // Restore SVG if present
   if (project.svgText) {
     store.setSvgText(project.svgText);
-
     try {
       const parsed = parseSvg(project.svgText);
       const converted = svgToShapes(parsed);
       store.setPaths(converted);
       store.setSvgBounds(parsed.viewBox);
+      store.setShapeRegistry(parsed.shapeRegistry);
     } catch {
       return 'Project loaded but SVG could not be re-parsed';
     }
@@ -92,27 +78,27 @@ export async function loadProject(file: File): Promise<string | null> {
     store.setSvgBounds(null);
   }
 
-  // Restore depth assignments (with profileOffset fallback for older projects)
-  const assignments = new Map<string, DepthAssignment>();
-  if (project.depthAssignments) {
-    for (const a of project.depthAssignments) {
-      assignments.set(a.pathId, {
-        ...a,
-        profileOffset: a.profileOffset ?? 'none',
-      });
+  // Restore shape levels (v2) or convert from old depthAssignments (v1)
+  const levels = new Map<string, ShapeLevel>();
+  if (project.shapeLevels) {
+    for (const sl of project.shapeLevels) {
+      levels.set(sl.shapeId, sl);
+    }
+  } else if (project.depthAssignments) {
+    // Backward compatibility with v1 projects
+    for (const da of project.depthAssignments) {
+      const id = da.pathId ?? da.shapeId;
+      levels.set(id, { shapeId: id, level: da.depth ?? 0 });
     }
   }
-  useDesignStore.setState({ depthAssignments: assignments });
+  useDesignStore.setState({ shapeLevels: levels });
 
-  // Restore operation order
   if (project.operationOrder) {
     store.setOperationOrder(project.operationOrder);
   }
 
-  // Restore design copies
   useDesignStore.setState({ designCopies: project.designCopies ?? [] });
 
-  // Clear generated G-code (stale after load)
   store.setGcode(null);
   store.selectPath(null);
 

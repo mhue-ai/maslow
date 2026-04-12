@@ -1,24 +1,9 @@
 import { useDesignStore } from '../../store/designStore';
-import type { DepthType, CutStrategy, ProfileOffset } from '../../types/design';
-
-const DEPTH_COLORS: Record<string, string> = {
-  face: '#44cc44',
-  relief: '#4488ff',
-  through: '#ff4444',
-};
-
-const DEPTH_LABELS: Record<DepthType, string> = {
-  face: 'Face',
-  relief: 'Relief',
-  through: 'Through',
-};
 
 export function DepthPanel() {
   const paths = useDesignStore((s) => s.paths);
-  const depthAssignments = useDesignStore((s) => s.depthAssignments);
-  const setDepth = useDesignStore((s) => s.setDepth);
-  const setStrategy = useDesignStore((s) => s.setStrategy);
-  const setProfileOffset = useDesignStore((s) => s.setProfileOffset);
+  const shapeLevels = useDesignStore((s) => s.shapeLevels);
+  const setShapeLevel = useDesignStore((s) => s.setShapeLevel);
   const selectedPathId = useDesignStore((s) => s.selectedPathId);
   const selectPath = useDesignStore((s) => s.selectPath);
   const material = useDesignStore((s) => s.material);
@@ -29,8 +14,8 @@ export function DepthPanel() {
   if (paths.length === 0) {
     return (
       <div>
-        <h3>Paths & Depth</h3>
-        <p style={{ fontSize: 11, color: '#555' }}>Import an SVG to see paths</p>
+        <h3>Shapes</h3>
+        <p style={{ fontSize: 11, color: '#555' }}>Import an SVG to see shapes</p>
       </div>
     );
   }
@@ -40,33 +25,48 @@ export function DepthPanel() {
     ? operationOrder
     : paths.map((p) => p.data.id);
 
-  const selected = paths.find((p) => p.data.id === selectedPathId);
-  const selectedAssignment = selectedPathId ? depthAssignments.get(selectedPathId) : null;
+  const thickness = material.thickness;
 
-  // Helper: get display info for a path
-  const getPathInfo = (id: string) => {
-    const a = depthAssignments.get(id);
-    const type = a?.type ?? 'face';
-    const depth = a?.depth ?? 0;
-    const label = DEPTH_LABELS[type];
-    const depthStr = type === 'face' ? '' : type === 'through' ? `${material.thickness}mm` : `${depth}mm`;
-    return { type, label, depthStr, color: DEPTH_COLORS[type] };
+  // Get display info for a shape
+  const getInfo = (id: string) => {
+    const level = shapeLevels.get(id)?.level ?? 0;
+    const isProfile = id === profileCutId;
+    let label: string;
+    let color: string;
+
+    if (isProfile) {
+      label = `${thickness}mm (profile)`;
+      color = '#ff8800';
+    } else if (level <= 0) {
+      label = 'face';
+      color = '#44cc44';
+    } else if (level >= thickness) {
+      label = `${thickness}mm (through)`;
+      color = '#ff4444';
+    } else {
+      label = `${level}mm`;
+      color = `rgb(${68 - level * 2}, ${100 - level * 3}, ${200 - level * 5})`;
+    }
+    return { level, label, color };
   };
+
+  const selectedLevel = selectedPathId ? (shapeLevels.get(selectedPathId)?.level ?? 0) : 0;
 
   return (
     <div>
-      <h3>Cut Order ({paths.length} paths)</h3>
+      <h3>Shapes ({paths.length})</h3>
 
       <p style={{ fontSize: 10, color: '#555', marginBottom: 6 }}>
-        Click shape = pocket. Shift+click = through.
+        Click = deepen 2mm. Shift+click = reset.
       </p>
 
       <div className="path-list">
         {orderedIds.map((id, idx) => {
           const path = pathMap.get(id);
           if (!path) return null;
-          const info = getPathInfo(id);
+          const info = getInfo(id);
           const isSelected = selectedPathId === id;
+          const isProfile = id === profileCutId;
 
           return (
             <div
@@ -89,16 +89,15 @@ export function DepthPanel() {
                 >v</button>
               </div>
               <div className="path-swatch" style={{
-                background: id === profileCutId ? '#ff8800' : info.color,
-                border: id === profileCutId ? '1px solid #ffaa44' : 'none',
+                background: info.color,
+                border: isProfile ? '1px solid #ffaa44' : 'none',
               }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {id === profileCutId ? '✂ ' : ''}{path.data.name}
-                  {id === profileCutId && <span style={{ fontSize: 9, color: '#ff8800' }}> (Profile Cut)</span>}
+                  {isProfile ? '✂ ' : ''}{path.data.name}
                 </div>
-                <div style={{ fontSize: 9, color: '#666' }}>
-                  {info.label}{info.depthStr ? ` — ${info.depthStr}` : ''}
+                <div style={{ fontSize: 9, color: '#888' }}>
+                  {info.label}
                 </div>
               </div>
             </div>
@@ -106,117 +105,55 @@ export function DepthPanel() {
         })}
       </div>
 
-      {/* Profile Cut (release cut) */}
-      <div style={{ marginTop: 12 }}>
-        <h3>Profile Cut</h3>
-        <p style={{ fontSize: 10, color: '#555', marginBottom: 4 }}>
-          Final outline cut that releases the work from the sheet. Always cut last.
-        </p>
-        {(() => {
-          // Check if any path is assigned as through-cut with outline strategy
-          const profilePaths = orderedIds.filter((id) => {
-            const a = depthAssignments.get(id);
-            return a?.type === 'through' && a?.strategy === 'outline';
-          });
-          if (profilePaths.length > 0) {
-            return (
-              <div style={{ fontSize: 11, color: '#44cc44' }}>
-                {profilePaths.length} profile cut(s) assigned
-              </div>
-            );
-          }
-          return (
-            <div style={{ fontSize: 11, color: '#888' }}>
-              Select a border path and set it to Through + Outline to create the profile cut
-            </div>
-          );
-        })()}
-      </div>
-
-      {/* Selected path detail controls */}
-      {selected && selectedPathId && (
+      {/* Selected shape controls */}
+      {selectedPathId && (
         <div style={{ marginTop: 12 }}>
-          <h3>{selected.data.name}</h3>
+          <h3>{pathMap.get(selectedPathId)?.data.name ?? 'Shape'}</h3>
 
-          <div className="depth-controls">
-            {(['face', 'relief', 'through'] as DepthType[]).map((type) => (
-              <button
-                key={type}
-                className={`btn btn-sm depth-btn ${(selectedAssignment?.type ?? 'face') === type ? 'active' : ''}`}
-                onClick={() => setDepth(selectedPathId, type)}
-              >
-                {DEPTH_LABELS[type]}
-              </button>
-            ))}
+          <label>
+            Level
+            <input
+              type="number"
+              value={selectedLevel}
+              min={0}
+              max={thickness}
+              step={1}
+              onChange={(e) => setShapeLevel(selectedPathId, Number(e.target.value))}
+            />
+            <span className="unit">mm</span>
+          </label>
+
+          <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+            <button className="btn btn-sm" onClick={() => setShapeLevel(selectedPathId, 0)}>
+              Face (0)
+            </button>
+            <button className="btn btn-sm" onClick={() => setShapeLevel(selectedPathId, thickness / 2)}>
+              Half
+            </button>
+            <button className="btn btn-sm" onClick={() => setShapeLevel(selectedPathId, thickness)}>
+              Through
+            </button>
           </div>
 
-          {selectedAssignment && selectedAssignment.type !== 'face' && (
-            <div style={{ marginTop: 8 }}>
-              <label style={{ fontSize: 11, color: '#666', marginBottom: 4, display: 'block' }}>
-                Cut approach
-              </label>
-              <div className="depth-controls">
-                {(['pocket', 'outline'] as CutStrategy[]).map((strat) => (
-                  <button
-                    key={strat}
-                    className={`btn btn-sm depth-btn ${selectedAssignment.strategy === strat ? 'active' : ''}`}
-                    onClick={() => setStrategy(selectedPathId, strat)}
-                  >
-                    {strat === 'pocket' ? 'Pocket' : 'Outline'}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {selectedAssignment && selectedAssignment.type !== 'face' && selectedAssignment.strategy === 'outline' && (
-            <div style={{ marginTop: 8 }}>
-              <label style={{ fontSize: 11, color: '#666', marginBottom: 4, display: 'block' }}>
-                Bit offset
-              </label>
-              <div className="depth-controls">
-                {(['inside', 'none', 'outside'] as ProfileOffset[]).map((off) => (
-                  <button
-                    key={off}
-                    className={`btn btn-sm depth-btn ${selectedAssignment.profileOffset === off ? 'active' : ''}`}
-                    onClick={() => setProfileOffset(selectedPathId, off)}
-                  >
-                    {off === 'inside' ? 'Inside' : off === 'outside' ? 'Outside' : 'On Line'}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {selectedAssignment?.type === 'relief' && (
-            <label style={{ marginTop: 8 }}>
-              Depth
-              <input
-                type="number"
-                value={selectedAssignment.depth}
-                min={0.5}
-                max={material.thickness}
-                step={0.5}
-                onChange={(e) => setDepth(selectedPathId, 'relief', Number(e.target.value))}
-              />
-              <span className="unit">mm</span>
-            </label>
-          )}
-
-          {selectedAssignment?.type === 'through' && (
-            <p style={{ fontSize: 11, color: '#555', marginTop: 4 }}>
-              Full depth: {material.thickness} mm
-            </p>
-          )}
+          <p style={{ fontSize: 10, color: '#555', marginTop: 6 }}>
+            {selectedLevel <= 0 && 'No cut — stays at material surface'}
+            {selectedLevel > 0 && selectedLevel < thickness && `Pocket ${selectedLevel}mm deep, cut inside boundary`}
+            {selectedLevel >= thickness && (selectedPathId === profileCutId
+              ? 'Profile cut — releases workpiece, cut outside'
+              : 'Through-cut — cut inside boundary')}
+          </p>
         </div>
       )}
 
       <div style={{ marginTop: 16 }}>
-        <h3>Bulk Assign</h3>
+        <h3>Quick Set</h3>
         <div style={{ display: 'flex', gap: 4 }}>
-          <button className="btn btn-sm" onClick={() => paths.forEach((p) => setDepth(p.data.id, 'face'))}>All Face</button>
-          <button className="btn btn-sm" onClick={() => paths.forEach((p) => setDepth(p.data.id, 'relief'))}>All Relief</button>
-          <button className="btn btn-sm" onClick={() => paths.forEach((p) => setDepth(p.data.id, 'through'))}>All Through</button>
+          <button className="btn btn-sm" onClick={() => paths.forEach((p) => { if (p.data.id !== profileCutId) setShapeLevel(p.data.id, 0); })}>
+            All Face
+          </button>
+          <button className="btn btn-sm" onClick={() => paths.forEach((p) => { if (p.data.id !== profileCutId) setShapeLevel(p.data.id, 6); })}>
+            All 6mm
+          </button>
         </div>
       </div>
     </div>

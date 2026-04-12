@@ -9,10 +9,10 @@ import type { SvgShapeEntry } from '../../svg/svgParser';
 export function SvgPreview2D() {
   const svgText = useDesignStore((s) => s.svgText);
   const material = useDesignStore((s) => s.material);
-  const depthAssignments = useDesignStore((s) => s.depthAssignments);
+  const shapeLevels = useDesignStore((s) => s.shapeLevels);
   const selectedPathId = useDesignStore((s) => s.selectedPathId);
   const selectPath = useDesignStore((s) => s.selectPath);
-  const setDepth = useDesignStore((s) => s.setDepth);
+  const setShapeLevel = useDesignStore((s) => s.setShapeLevel);
   const svgTransformOverride = useDesignStore((s) => s.svgTransformOverride);
   const profileCutId = useDesignStore((s) => s.profileCutId);
   const toolConfig = useDesignStore((s) => s.toolConfig);
@@ -31,35 +31,19 @@ export function SvgPreview2D() {
   // Process SVG
   useEffect(() => {
     if (!svgText) { setSvgDoc(null); return; }
-    setSvgDoc(enhanceSvg(svgText, depthAssignments, selectedPathId, profileCutId, toolConfig.bitDiameter, material, shapeRegistry));
-  }, [svgText, depthAssignments, selectedPathId, profileCutId, toolConfig.bitDiameter, material, shapeRegistry]);
+    setSvgDoc(enhanceSvg(svgText, shapeLevels, selectedPathId, profileCutId, toolConfig.bitDiameter, material, shapeRegistry));
+  }, [svgText, shapeLevels, selectedPathId, profileCutId, toolConfig.bitDiameter, material, shapeRegistry]);
 
   const STEP_MM = 2; // Each click deepens by 2mm
 
-  // Step a path deeper: face → relief 2mm → 4mm → ... → through → face
-  const stepDeeper = useCallback((pathId: string) => {
-    const assignment = depthAssignments.get(pathId);
-    const currentType = assignment?.type ?? 'face';
-    const currentDepth = assignment?.depth ?? 0;
+  // Step a shape deeper: 0 → 2 → 4 → ... → thickness → 0
+  const stepDeeper = useCallback((shapeId: string) => {
+    const current = shapeLevels.get(shapeId)?.level ?? 0;
     const thickness = material.thickness;
-
-    if (currentType === 'through') {
-      // Already through — reset to face
-      setDepth(pathId, 'face');
-    } else if (currentType === 'face') {
-      // Start cutting — first relief step
-      setDepth(pathId, 'relief', STEP_MM);
-    } else {
-      // Already relief — go deeper
-      const nextDepth = currentDepth + STEP_MM;
-      if (nextDepth >= thickness) {
-        // Reached material thickness — set to through-cut
-        setDepth(pathId, 'through');
-      } else {
-        setDepth(pathId, 'relief', nextDepth);
-      }
-    }
-  }, [depthAssignments, setDepth, material.thickness]);
+    const next = current + STEP_MM;
+    // If past thickness, wrap back to 0 (face)
+    setShapeLevel(shapeId, next > thickness ? 0 : next);
+  }, [shapeLevels, setShapeLevel, material.thickness]);
 
   // Paint-bucket click handler
   const handleClick = useCallback((e: React.MouseEvent) => {
@@ -77,7 +61,7 @@ export function SvgPreview2D() {
       if (!shapeId) return;
       selectPath(shapeId);
       if (e.shiftKey) {
-        setDepth(shapeId, 'face');
+        setShapeLevel(shapeId, 0);
       } else {
         stepDeeper(shapeId);
       }
@@ -120,12 +104,12 @@ export function SvgPreview2D() {
     if (bestId) {
       selectPath(bestId);
       if (e.shiftKey) {
-        setDepth(bestId, 'face');
+        setShapeLevel(bestId, 0);
       } else {
         stepDeeper(bestId);
       }
     }
-  }, [depthAssignments, selectPath, setDepth, stepDeeper, isPanning, svgText]);
+  }, [shapeLevels, selectPath, setShapeLevel, stepDeeper, isPanning, svgText]);
 
   // Mouse wheel zoom
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -246,7 +230,7 @@ export function SvgPreview2D() {
  */
 function enhanceSvg(
   svgText: string,
-  depthAssignments: Map<string, any>,
+  shapeLevels: Map<string, { level: number }>,
   selectedPathId: string | null,
   profileCutId: string | null,
   bitDiameter: number,
@@ -294,9 +278,10 @@ function enhanceSvg(
     const isProfileCut = shapeId === profileCutId;
     el.setAttribute('data-shape-id', shapeId);
 
-    const assignment = depthAssignments.get(shapeId);
+    const shapeEntry = shapeLevels.get(shapeId);
+    const level = shapeEntry?.level ?? 0;
     const isSelected = selectedPathId === shapeId;
-    const depthType = assignment?.type ?? 'face';
+    const depthRatio = Math.min(1, level / material.thickness);
     const styles: string[] = ['cursor: crosshair'];
     const filters: string[] = [];
 
@@ -308,43 +293,34 @@ function enhanceSvg(
       styles.push('stroke-linejoin: round');
     }
 
-    // Depth-proportional shading: darker = deeper cut
-    const depth = assignment?.depth ?? 0;
-    const depthRatio = Math.min(1, depth / material.thickness); // 0 = face, 1 = full through
-
+    // Depth-proportional shading: one simple model based on level
     if (isProfileCut) {
-      // Profile cut — orange dashed outline, dark fill showing through-cut
+      // Profile cut — orange dashed, dark fill
       if (hasStroke) {
         el.setAttribute('stroke', '#ff8800');
         styles.push(`stroke-dasharray: ${(bitStrokeWidth * 2).toFixed(1)} ${bitStrokeWidth.toFixed(1)}`);
       }
-      el.setAttribute('fill', `rgba(40, 20, 0, 0.7)`);
+      el.setAttribute('fill', 'rgba(40, 20, 0, 0.7)');
       filters.push('drop-shadow(0 0 4px #ff8800)');
-    } else if (depthType === 'relief') {
-      // Relief — darken proportionally to depth
-      // Shallow cut = subtle shadow, deep cut = very dark
-      const darkness = 0.15 + depthRatio * 0.55; // 0.15 to 0.70
-      el.setAttribute('fill', `rgba(0, 0, 0, ${darkness.toFixed(2)})`);
-      if (hasStroke) el.setAttribute('stroke', `rgba(30, 80, 160, 0.8)`);
-    } else if (depthType === 'through') {
-      // Through-cut — nearly black / hole appearance
-      el.setAttribute('fill', `rgba(10, 5, 0, 0.80)`);
-      if (hasStroke) el.setAttribute('stroke', '#882222');
-    } else {
-      // Face — stays at surface level, must clearly stand out as "raised"
-      // Override fill to material/wood color so face elements are bright
-      // against any dark pocketed background behind them
+    } else if (level <= 0) {
+      // Face (level 0) — bright material color, raised appearance
       const currentFill = el.getAttribute('fill');
       if (currentFill === 'none' || !currentFill) {
-        // Outline-only: near-transparent for hit detection
         el.setAttribute('fill', 'rgba(196, 166, 106, 0.05)');
       } else {
-        // Filled element at face: show in material color (raised wood surface)
         el.setAttribute('fill', '#c4a66a');
         if (hasStroke) el.setAttribute('stroke', '#8a6a3a');
       }
-      // Raised shadow to visually "lift" above pocketed areas
       filters.push('drop-shadow(1px 2px 2px rgba(0,0,0,0.5))');
+    } else if (level >= material.thickness) {
+      // Through-cut — nearly black
+      el.setAttribute('fill', 'rgba(10, 5, 0, 0.80)');
+      if (hasStroke) el.setAttribute('stroke', '#882222');
+    } else {
+      // Relief — darken proportionally to depth
+      const darkness = 0.15 + depthRatio * 0.55;
+      el.setAttribute('fill', `rgba(0, 0, 0, ${darkness.toFixed(2)})`);
+      if (hasStroke) el.setAttribute('stroke', 'rgba(30, 80, 160, 0.8)');
     }
 
     // Selection highlight

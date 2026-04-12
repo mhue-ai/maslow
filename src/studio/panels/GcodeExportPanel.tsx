@@ -7,28 +7,27 @@ import { downloadGcode } from '../../gcode/gcodeWriter';
 
 export function GcodeExportPanel() {
   const paths = useDesignStore((s) => s.paths);
-  const depthAssignments = useDesignStore((s) => s.depthAssignments);
+  const shapeLevels = useDesignStore((s) => s.shapeLevels);
   const toolConfig = useDesignStore((s) => s.toolConfig);
   const material = useDesignStore((s) => s.material);
   const svgBounds = useDesignStore((s) => s.svgBounds);
   const svgTransformOverride = useDesignStore((s) => s.svgTransformOverride);
   const operationOrder = useDesignStore((s) => s.operationOrder);
   const designCopies = useDesignStore((s) => s.designCopies);
+  const profileCutId = useDesignStore((s) => s.profileCutId);
   const setGcode = useDesignStore((s) => s.setGcode);
 
   const [result, setResult] = useState<GenerationResult | null>(null);
   const [bounds, setBounds] = useState<BoundsResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const hasAssignments = Array.from(depthAssignments.values()).some(
-    (a) => a.type !== 'face'
-  );
+  const hasCuts = Array.from(shapeLevels.values()).some((s) => s.level > 0);
 
   if (paths.length === 0) {
     return (
       <div>
         <h3>G-Code Export</h3>
-        <p style={{ fontSize: 11, color: '#555' }}>Import SVG and assign depths first</p>
+        <p style={{ fontSize: 11, color: '#555' }}>Import SVG and set shape levels first</p>
       </div>
     );
   }
@@ -42,38 +41,29 @@ export function GcodeExportPanel() {
       return;
     }
 
-    if (!hasAssignments) {
-      setError('No depth assignments. Assign relief or through-cut to at least one path.');
+    if (!hasCuts) {
+      setError('No shapes have depth set. Click shapes to deepen them.');
       return;
     }
 
     try {
       const transform = computeSvgTransform(
-        svgBounds,
-        material,
-        toolConfig.workOrigin,
-        svgTransformOverride
+        svgBounds, material, toolConfig.workOrigin, svgTransformOverride
       );
 
       const gen = generateGcode(
-        paths, depthAssignments, toolConfig, transform,
-        material.thickness, operationOrder, designCopies
+        paths, shapeLevels, toolConfig, transform,
+        material.thickness, operationOrder, profileCutId, designCopies
       );
 
       setResult(gen);
       setGcode(gen.lines.join('\n'));
 
-      // Run bounds check
       const boundsResult = checkBounds(gen.lines, material, toolConfig.workOrigin);
       setBounds(boundsResult);
     } catch (err) {
       setError(`Generation failed: ${err instanceof Error ? err.message : String(err)}`);
     }
-  };
-
-  const handleDownload = () => {
-    if (!result) return;
-    downloadGcode(result.lines, 'maslow-cut.nc');
   };
 
   return (
@@ -85,7 +75,7 @@ export function GcodeExportPanel() {
       <button
         className="btn btn-primary"
         onClick={handleGenerate}
-        disabled={!hasAssignments}
+        disabled={!hasCuts}
         style={{ width: '100%', marginBottom: 8 }}
       >
         Generate G-Code
@@ -111,11 +101,7 @@ export function GcodeExportPanel() {
           <div>{result.stats.operationCount} operations</div>
           <div>~{result.stats.estimatedTimeMin} min estimated</div>
 
-          <button
-            className="btn"
-            onClick={handleDownload}
-            style={{ width: '100%', marginTop: 8 }}
-          >
+          <button className="btn" onClick={() => result && downloadGcode(result.lines, 'maslow-cut.nc')} style={{ width: '100%', marginTop: 8 }}>
             Download .nc
           </button>
         </div>

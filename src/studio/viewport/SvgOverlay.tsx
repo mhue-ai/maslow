@@ -2,50 +2,26 @@ import { useMemo } from 'react';
 import { DoubleSide } from 'three';
 import { useDesignStore } from '../../store/designStore';
 import { computeSvgTransform } from '../../svg/svgScaler';
-import type { ThreeEvent } from '@react-three/fiber';
-
-const DEPTH_COLORS: Record<string, string> = {
-  face: '#44cc44',
-  relief: '#4488ff',
-  through: '#ff4444',
-  unassigned: '#999999',
-};
 
 function DesignInstance({ offsetX, offsetY, opacity }: { offsetX: number; offsetY: number; opacity: number }) {
   const paths = useDesignStore((s) => s.paths);
-  const depthAssignments = useDesignStore((s) => s.depthAssignments);
+  const shapeLevels = useDesignStore((s) => s.shapeLevels);
   const selectedPathId = useDesignStore((s) => s.selectedPathId);
   const selectPath = useDesignStore((s) => s.selectPath);
-  const setDepth = useDesignStore((s) => s.setDepth);
-
-  const handleClick = (e: ThreeEvent<MouseEvent>, pathId: string) => {
-    e.stopPropagation();
-    selectPath(pathId);
-
-    const assignment = depthAssignments.get(pathId);
-    const currentType = assignment?.type ?? 'face';
-
-    if (e.nativeEvent.shiftKey) {
-      // Shift+click → toggle through-cut
-      setDepth(pathId, currentType === 'through' ? 'face' : 'through');
-    } else {
-      // Click → toggle pocket (relief)
-      setDepth(pathId, currentType === 'relief' ? 'face' : 'relief');
-    }
-  };
+  const material = useDesignStore((s) => s.material);
 
   return (
     <group position={[offsetX, offsetY, 0]}>
       {paths.map((path) => {
-        const assignment = depthAssignments.get(path.data.id);
-        const depthType = assignment?.type ?? 'unassigned';
-        const color = DEPTH_COLORS[depthType];
+        const level = shapeLevels.get(path.data.id)?.level ?? 0;
+        const ratio = Math.min(1, level / material.thickness);
+        const color = level <= 0 ? '#44cc44' : level >= material.thickness ? '#ff4444' : `rgb(${68 - ratio * 40}, ${100 - ratio * 60}, ${200 - ratio * 100})`;
         const isSelected = selectedPathId === path.data.id;
 
         return path.shapes.map((shape, shapeIdx) => (
           <mesh
             key={`${path.data.id}-${shapeIdx}`}
-            onClick={(e) => handleClick(e, path.data.id)}
+            onClick={(e) => { e.stopPropagation(); selectPath(path.data.id); }}
           >
             <shapeGeometry args={[shape]} />
             <meshStandardMaterial
@@ -74,12 +50,7 @@ export function SvgOverlay() {
 
   const transform = useMemo(() => {
     if (!svgBounds) return null;
-    return computeSvgTransform(
-      svgBounds,
-      material,
-      toolConfig.workOrigin,
-      svgTransformOverride
-    );
+    return computeSvgTransform(svgBounds, material, toolConfig.workOrigin, svgTransformOverride);
   }, [svgBounds, material, toolConfig.workOrigin, svgTransformOverride]);
 
   if (paths.length === 0 || !transform || showCutPreview) return null;

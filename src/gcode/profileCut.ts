@@ -1,5 +1,6 @@
 import type { Shape } from 'three';
-import type { ToolConfig, ProfileOffset } from '../types/design';
+import type { ToolConfig } from '../types/design';
+type ProfileOffset = 'none' | 'inside' | 'outside';
 import type { SvgTransform } from '../svg/svgScaler';
 import { transformPoint } from '../svg/svgScaler';
 import { linearMove, rapid, rapidZ, plunge } from './gcodeWriter';

@@ -7,7 +7,7 @@ export function CutPreview() {
   const paths = useDesignStore((s) => s.paths);
   const material = useDesignStore((s) => s.material);
   const svgBounds = useDesignStore((s) => s.svgBounds);
-  const depthAssignments = useDesignStore((s) => s.depthAssignments);
+  const shapeLevels = useDesignStore((s) => s.shapeLevels);
   const toolConfig = useDesignStore((s) => s.toolConfig);
   const svgTransformOverride = useDesignStore((s) => s.svgTransformOverride);
 
@@ -23,12 +23,12 @@ export function CutPreview() {
   return (
     <group>
       {paths.map((path) => {
-        const assignment = depthAssignments.get(path.data.id);
-        if (!assignment || assignment.type === 'face') return null;
+        const level = shapeLevels.get(path.data.id)?.level ?? 0;
+        if (level <= 0) return null;
 
-        const cutDepth = assignment.type === 'through'
+        const cutDepth = level >= material.thickness
           ? material.thickness + 0.5
-          : assignment.depth;
+          : level;
 
         return path.shapes.map((shape, shapeIdx) => (
           <group
@@ -38,7 +38,7 @@ export function CutPreview() {
             rotation={[0, 0, transform.rotation]}
           >
             {/* Pocket floor at the bottom of the cut */}
-            {assignment.type === 'relief' && (
+            {level < material.thickness && (
               <mesh position={[0, 0, -cutDepth]}>
                 <shapeGeometry args={[shape]} />
                 <meshStandardMaterial
@@ -53,10 +53,10 @@ export function CutPreview() {
             <mesh position={[0, 0, -cutDepth]} rotation={[0, 0, 0]}>
               <extrudeGeometry args={[shape, { depth: cutDepth, bevelEnabled: false }]} />
               <meshStandardMaterial
-                color={assignment.type === 'through' ? '#1a1a2e' : '#6B4D1A'}
+                color={level >= material.thickness ? '#1a1a2e' : '#6B4D1A'}
                 roughness={0.95}
-                transparent={assignment.type === 'through'}
-                opacity={assignment.type === 'through' ? 0.15 : 0.85}
+                transparent={level >= material.thickness}
+                opacity={level >= material.thickness ? 0.15 : 0.85}
                 side={DoubleSide}
               />
             </mesh>
