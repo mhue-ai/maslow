@@ -15,6 +15,7 @@ export function SvgPreview2D() {
   const selectPath = useDesignStore((s) => s.selectPath);
   const setShapeLevel = useDesignStore((s) => s.setShapeLevel);
   const svgTransformOverride = useDesignStore((s) => s.svgTransformOverride);
+  const setSvgTransformOverride = useDesignStore((s) => s.setSvgTransformOverride);
   const profileCutId = useDesignStore((s) => s.profileCutId);
   const toolConfig = useDesignStore((s) => s.toolConfig);
   const shapeRegistry = useDesignStore((s) => s.shapeRegistry);
@@ -23,11 +24,11 @@ export function SvgPreview2D() {
   const svgContainerRef = useRef<HTMLDivElement>(null);
   const [svgDoc, setSvgDoc] = useState<string | null>(null);
 
-  // Zoom/pan state
+  // Zoom/pan/drag state
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [isPanning, setIsPanning] = useState(false);
-  const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+  const [dragMode, setDragMode] = useState<'none' | 'pan' | 'move'>('none');
+  const dragStart = useRef({ x: 0, y: 0, ox: 0, oy: 0 });
 
   // Process SVG
   useEffect(() => {
@@ -38,9 +39,7 @@ export function SvgPreview2D() {
   const STEP_MM = 2; // Each click deepens by 2mm
 
   // Step a shape deeper: 0 → 2 → 4 → ... → thickness → 0
-  // Profile cut shape is locked — can't be changed by clicking
   const stepDeeper = useCallback((shapeId: string) => {
-    if (shapeId === profileCutId) return; // Profile cut is locked
     const current = shapeLevels.get(shapeId)?.level ?? 0;
     const thickness = material.thickness;
     const next = current + STEP_MM;
@@ -49,7 +48,7 @@ export function SvgPreview2D() {
 
   // Paint-bucket click handler
   const handleClick = useCallback((e: React.MouseEvent) => {
-    if (isPanning) return;
+    if (dragMode !== 'none') return;
 
     // First: check if user clicked directly on an SVG element
     const target = e.target as Element;
@@ -117,7 +116,8 @@ export function SvgPreview2D() {
         stepDeeper(bestId);
       }
     }
-  }, [shapeLevels, selectPath, setShapeLevel, stepDeeper, isPanning, svgText]);
+  }, [shapeLevels, selectPath, setShapeLevel, stepDeeper, dragMode !== 'none', svgText]);
+
 
   // Mouse wheel zoom
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -126,24 +126,46 @@ export function SvgPreview2D() {
     setZoom((z) => Math.max(0.2, Math.min(10, z * delta)));
   }, []);
 
-  // Middle-click or Ctrl+click pan
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 1 || (e.button === 0 && e.ctrlKey)) {
+      // Ctrl+drag or middle-click = pan viewport
       e.preventDefault();
-      setIsPanning(true);
-      panStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+      setDragMode('pan');
+      dragStart.current = { x: e.clientX, y: e.clientY, ox: pan.x, oy: pan.y };
+    } else if (e.button === 0 && e.altKey) {
+      // Alt+drag = move design on material
+      e.preventDefault();
+      setDragMode('move');
+      dragStart.current = {
+        x: e.clientX, y: e.clientY,
+        ox: svgTransformOverride.offsetX, oy: svgTransformOverride.offsetY,
+      };
     }
-  }, [pan]);
+  }, [pan, svgTransformOverride]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isPanning) return;
-    const dx = e.clientX - panStart.current.x;
-    const dy = e.clientY - panStart.current.y;
-    setPan({ x: panStart.current.panX + dx, y: panStart.current.panY + dy });
-  }, [isPanning]);
+    if (dragMode === 'none') return;
+    const dx = e.clientX - dragStart.current.x;
+    const dy = e.clientY - dragStart.current.y;
+
+    if (dragMode === 'pan') {
+      setPan({ x: dragStart.current.ox + dx, y: dragStart.current.oy + dy });
+    } else if (dragMode === 'move') {
+      // Convert screen pixels to material mm
+      const containerEl = svgContainerRef.current;
+      if (!containerEl) return;
+      const matEl = containerEl.closest('[style*="aspectRatio"]') ?? containerEl;
+      const pixelWidth = matEl.getBoundingClientRect().width;
+      const mmPerPixel = material.width / (pixelWidth / zoom);
+      setSvgTransformOverride({
+        offsetX: dragStart.current.ox + dx * mmPerPixel,
+        offsetY: dragStart.current.oy - dy * mmPerPixel, // Y inverted
+      });
+    }
+  }, [dragMode, zoom, material.width, setSvgTransformOverride]);
 
   const handleMouseUp = useCallback(() => {
-    setIsPanning(false);
+    setDragMode('none');
   }, []);
 
   const resetView = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
@@ -170,7 +192,7 @@ export function SvgPreview2D() {
         height: '100%',
         overflow: 'hidden',
         background: '#1a1a2e',
-        cursor: isPanning ? 'grabbing' : 'crosshair',
+        cursor: dragMode !== 'none' ? 'grabbing' : 'crosshair',
         position: 'relative',
       }}
     >
@@ -190,7 +212,7 @@ export function SvgPreview2D() {
         position: 'absolute', bottom: 8, left: 8, zIndex: 10,
         fontSize: 10, color: '#555',
       }}>
-        Click = deepen 2mm per click. Shift+click = reset to face. Ctrl+drag = pan. Scroll = zoom.
+        Click = deepen 2mm. Shift+click = reset. Alt+drag = move design. Ctrl+drag = pan. Scroll = zoom.
       </div>
 
       {/* Material surface with SVG */}
@@ -200,7 +222,7 @@ export function SvgPreview2D() {
         left: '50%',
         transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
         transformOrigin: 'center center',
-        transition: isPanning ? 'none' : 'transform 0.1s ease-out',
+        transition: dragMode !== 'none' ? 'none' : 'transform 0.1s ease-out',
       }}>
         <div
           ref={svgContainerRef}
