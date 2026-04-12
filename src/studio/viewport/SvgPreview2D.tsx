@@ -53,14 +53,14 @@ export function SvgPreview2D() {
     const styleBlock = doc.createElementNS('http://www.w3.org/2000/svg', 'style');
     styleBlock.textContent = `
       path, polygon, polyline, rect, circle, ellipse, line {
-        fill: none !important;
-        stroke: #555555 !important;
+        fill: #c4a66a !important;
+        stroke: #8a6a3a !important;
         stroke-width: 0.02 !important;
         fill-opacity: 1 !important;
         stroke-opacity: 1 !important;
       }
       text {
-        fill: #555555 !important;
+        fill: #5a4a2a !important;
         stroke: none !important;
         pointer-events: none !important;
       }
@@ -77,11 +77,7 @@ export function SvgPreview2D() {
       if (!entry) return;
 
       if (entry.isText) {
-        el.setAttribute('fill', '#333333');
-        el.setAttribute('stroke', 'none');
-        (el as HTMLElement).style.fill = '#333333';
-        (el as HTMLElement).style.stroke = 'none';
-        el.setAttribute('style', ((el.getAttribute('style') ?? '') + '; pointer-events: none; fill: #333333; stroke: none;'));
+        el.setAttribute('style', 'pointer-events: none; fill: #5a4a2a !important; stroke: none !important;');
         return;
       }
 
@@ -92,32 +88,34 @@ export function SvgPreview2D() {
       const isProfile = entry.id === profileCutId;
       const thickness = material.thickness;
 
-      // CNC monochrome scheme: strip original colors, use depth-based greyscale
-      // Face = white fill + dark stroke (clean line drawing)
-      // Deeper = progressively darker fill
-      // Through = near-black
+      // Show each shape's actual depth as a realistic top-down preview.
+      // Face = material surface (light wood), deeper = darker wood, through = hole.
+      // This shows what the finished CNC piece will look like from above.
       let fill: string;
-      let stroke = '#444444';
+      let stroke: string;
       const filters: string[] = [];
 
       if (isProfile) {
-        // Profile cut: outline only with orange dashed stroke
-        // Don't fill dark — it bleeds through transparent shapes above
-        fill = 'none';
+        // Profile cut: orange dashed outline, material color fill
+        fill = '#c4a66a';
         stroke = '#ff8800';
       } else if (level >= thickness) {
-        fill = '#111111';
-        stroke = '#333333';
+        // Through-cut: very dark (hole in material)
+        fill = '#2a1a0a';
+        stroke = '#1a1a1a';
       } else if (level > 0) {
+        // Relief: darker wood proportional to depth
+        // Interpolate from surface wood (#c4a66a) to deep wood (#3a2510)
         const ratio = Math.min(1, level / thickness);
-        const grey = Math.round(240 - ratio * 200);
-        fill = `rgb(${grey},${grey},${grey})`;
-        stroke = `rgb(${Math.max(0, grey - 60)},${Math.max(0, grey - 60)},${Math.max(0, grey - 60)})`;
+        const r = Math.round(196 - ratio * 140);
+        const g = Math.round(166 - ratio * 130);
+        const b = Math.round(106 - ratio * 80);
+        fill = `rgb(${r},${g},${b})`;
+        stroke = `rgb(${Math.max(0, r - 30)},${Math.max(0, g - 30)},${Math.max(0, b - 20)})`;
       } else {
-        // Face level: transparent fill (outline only on material background)
-        // Shapes only show fill when they have depth assigned
-        fill = 'none';
-        stroke = '#333333';
+        // Face level: material surface color (light wood)
+        fill = '#c4a66a';
+        stroke = '#8a6a3a';
       }
 
       // Override via BOTH attribute AND style — CSS inline style has higher
