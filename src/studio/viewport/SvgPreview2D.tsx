@@ -78,10 +78,12 @@ export function SvgPreview2D() {
         // Filter degenerate shapes:
         // 1. Too small (less than 1 sq mm in material space)
         if (polyArea < 1) continue;
-        // 2. Extremely thin (aspect ratio > 30:1)
-        if (w > 0 && h > 0 && (w / h > 30 || h / w > 30)) continue;
-        // 3. Very low fill ratio (polygon area << bounding box = spiky/degenerate)
-        if (bboxArea > 0 && polyArea / bboxArea < 0.05) continue;
+        // 2. Extremely thin (aspect ratio > 20:1)
+        if (w > 0 && h > 0 && (w / h > 20 || h / w > 20)) continue;
+        // 3. Low fill ratio (polygon area << bounding box = spiky/self-intersecting)
+        if (bboxArea > 0 && polyArea / bboxArea < 0.15) continue;
+        // 4. Excessive point count (compound paths that create visual artifacts)
+        if (pts.length > 2000) continue;
 
         // Convert to SVG polygon points string
         const pointsStr = pts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
