@@ -80,7 +80,9 @@ export function SvgPreview2D() {
       const filters: string[] = [];
 
       if (isProfile) {
-        fill = '#1a1a1a';
+        // Profile cut: outline only with orange dashed stroke
+        // Don't fill dark — it bleeds through transparent shapes above
+        fill = 'none';
         stroke = '#ff8800';
       } else if (level >= thickness) {
         fill = '#111111';
