@@ -519,16 +519,22 @@ function createRingShapes(
 
         let fill: string;
         let stroke = 'none';
-        const styles: string[] = ['cursor: crosshair'];
+        const styles: string[] = ['cursor: crosshair', 'pointer-events: all'];
         const filters: string[] = [];
 
-        if (level <= 0) {
-          // Face-level ring: slightly lighter than material with visible outline
-          fill = '#d4b87a';
-          stroke = '#aa885588';
+        if (level <= 0 && !isSelected) {
+          // Face-level ring: INVISIBLE — no visual artifacts
+          // Still clickable via data-shape-id for paint-bucket detection
+          fill = 'transparent';
+          stroke = 'none';
+        } else if (level <= 0 && isSelected) {
+          // Selected but face: show a subtle highlight so user can see what's selected
+          fill = 'rgba(100, 150, 255, 0.15)';
+          stroke = 'rgba(100, 150, 255, 0.4)';
         } else if (level >= material.thickness) {
           fill = '#111111';
         } else {
+          // Ring at depth: show greyscale fill
           const grey = Math.round(240 - depthRatio * 200);
           fill = `rgb(${grey}, ${grey}, ${grey})`;
         }
