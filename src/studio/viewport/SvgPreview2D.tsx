@@ -438,7 +438,7 @@ function createRingShapes(
 ): void {
   // Collect all closed shape elements with bounding boxes.
   // Store the SVG path `d` attribute for creating compound ring paths.
-  const closedShapes: { el: Element; id: string; pathD: string; bbox: DOMRect; area: number }[] = [];
+  const closedShapes: { el: Element; id: string; pathD: string; bbox: { x: number; y: number; w: number; h: number }; area: number }[] = [];
 
   // Include polygons (convert points to path d)
   const polygons = svg.querySelectorAll('polygon[data-shape-id]');
@@ -447,25 +447,24 @@ function createRingShapes(
     if (!id) return;
     const points = el.getAttribute('points');
     if (!points) return;
-    try {
-      const bbox = (el as SVGGraphicsElement).getBBox();
-      closedShapes.push({ el, id, pathD: polygonPointsToPath(points, false), bbox, area: bbox.width * bbox.height });
-    } catch { /* skip */ }
+    const pathD = polygonPointsToPath(points, false);
+    const bbox = computeBBoxFromCoords(pathD);
+    if (bbox.w > 0) {
+      closedShapes.push({ el, id, pathD, bbox, area: bbox.w * bbox.h });
+    }
   });
 
-  // Include closed <path> elements — use actual d attribute, not bbox rectangles
-  const paths = svg.querySelectorAll('path[data-shape-id]');
-  paths.forEach((el) => {
+  // Include closed <path> elements — use actual d attribute
+  const pathEls = svg.querySelectorAll('path[data-shape-id]');
+  pathEls.forEach((el) => {
     const id = (el as HTMLElement).dataset.shapeId;
     if (!id) return;
     const d = el.getAttribute('d');
-    if (!d || !/z/i.test(d)) return; // Must contain Z (closed)
-    try {
-      const bbox = (el as SVGGraphicsElement).getBBox();
-      const area = bbox.width * bbox.height;
-      if (area < 0.1) return;
-      closedShapes.push({ el, id, pathD: d, bbox, area });
-    } catch { /* skip */ }
+    if (!d || !/z/i.test(d)) return;
+    const bbox = computeBBoxFromCoords(d);
+    const area = bbox.w * bbox.h;
+    if (area < 0.01) return;
+    closedShapes.push({ el, id, pathD: d, bbox, area });
   });
 
   // Sort by area, largest first
@@ -484,8 +483,8 @@ function createRingShapes(
       // Check if inner bbox is inside outer bbox
       if (inner.bbox.x >= outer.bbox.x &&
           inner.bbox.y >= outer.bbox.y &&
-          inner.bbox.x + inner.bbox.width <= outer.bbox.x + outer.bbox.width &&
-          inner.bbox.y + inner.bbox.height <= outer.bbox.y + outer.bbox.height) {
+          inner.bbox.x + inner.bbox.w <= outer.bbox.x + outer.bbox.w &&
+          inner.bbox.y + inner.bbox.h <= outer.bbox.y + outer.bbox.h) {
 
         // Create a ring shape: compound path with outer + reversed inner
         const ringId = `ring-${ringIndex++}`;
@@ -569,6 +568,28 @@ function polygonPointsToPath(points: string, reverse: boolean): string {
  * rebuilds as M...L...Z. Works for paths with M, L, and Z commands.
  * For complex curves (C, Q, A), falls back to the original path.
  */
+/**
+ * Compute bounding box from path coordinates without needing getBBox()
+ * (which fails in DOMParser context). Parses all numbers from the d attribute.
+ */
+function computeBBoxFromCoords(d: string): { x: number; y: number; w: number; h: number } {
+  const nums = d.match(/-?[\d.]+/g)?.map(Number) ?? [];
+  if (nums.length < 4) return { x: 0, y: 0, w: 0, h: 0 };
+
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (let i = 0; i < nums.length - 1; i += 2) {
+    const x = nums[i], y = nums[i + 1];
+    if (isNaN(x) || isNaN(y)) continue;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+
+  if (!isFinite(minX)) return { x: 0, y: 0, w: 0, h: 0 };
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
 function reversePath(d: string): string {
   // Extract all coordinate pairs from the path
   const coords: { x: number; y: number }[] = [];
