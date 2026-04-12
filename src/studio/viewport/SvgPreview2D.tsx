@@ -294,34 +294,41 @@ function enhanceSvg(
       styles.push('stroke-linejoin: round');
     }
 
-    // Depth-proportional shading: one simple model based on level
+    // Depth-proportional shading using SOLID OPAQUE colors.
+    // No semi-transparent overlays — prevents visual bleed between layers.
     if (isProfileCut) {
-      // Profile cut — orange dashed, dark fill
+      // Profile cut — orange dashed, dark solid fill
       if (hasStroke) {
         el.setAttribute('stroke', '#ff8800');
         styles.push(`stroke-dasharray: ${(bitStrokeWidth * 2).toFixed(1)} ${bitStrokeWidth.toFixed(1)}`);
       }
-      el.setAttribute('fill', 'rgba(40, 20, 0, 0.7)');
+      el.setAttribute('fill', '#2a1500');
       filters.push('drop-shadow(0 0 4px #ff8800)');
     } else if (level <= 0) {
-      // Face (level 0) — bright material color, raised appearance
+      // Face (level 0) — WHITE/bright to clearly stand out as raised above any pocket
       const currentFill = el.getAttribute('fill');
       if (currentFill === 'none' || !currentFill) {
-        el.setAttribute('fill', 'rgba(196, 166, 106, 0.05)');
+        // Outline-only: very light fill for hit detection, nearly invisible
+        el.setAttribute('fill', '#d4c49a');
+        styles.push('opacity: 0.08');
       } else {
-        el.setAttribute('fill', '#c4a66a');
-        if (hasStroke) el.setAttribute('stroke', '#8a6a3a');
+        // Filled face element: bright cream — clearly raised above dark pockets
+        el.setAttribute('fill', '#f0e6cc');
+        if (hasStroke) el.setAttribute('stroke', '#a08040');
       }
-      filters.push('drop-shadow(1px 2px 2px rgba(0,0,0,0.5))');
+      filters.push('drop-shadow(1px 2px 3px rgba(0,0,0,0.6))');
     } else if (level >= material.thickness) {
-      // Through-cut — nearly black
-      el.setAttribute('fill', 'rgba(10, 5, 0, 0.80)');
-      if (hasStroke) el.setAttribute('stroke', '#882222');
+      // Through-cut — solid very dark (hole appearance)
+      el.setAttribute('fill', '#0a0500');
+      if (hasStroke) el.setAttribute('stroke', '#662222');
     } else {
-      // Relief — darken proportionally to depth
-      const darkness = 0.15 + depthRatio * 0.55;
-      el.setAttribute('fill', `rgba(0, 0, 0, ${darkness.toFixed(2)})`);
-      if (hasStroke) el.setAttribute('stroke', 'rgba(30, 80, 160, 0.8)');
+      // Relief — solid wood color darkened proportionally to depth
+      // Interpolate from light wood (#c4a66a) to dark wood (#3a2510) based on depth
+      const r = Math.round(196 - depthRatio * 160);
+      const g = Math.round(166 - depthRatio * 140);
+      const b = Math.round(106 - depthRatio * 90);
+      el.setAttribute('fill', `rgb(${r}, ${g}, ${b})`);
+      if (hasStroke) el.setAttribute('stroke', `rgb(${Math.max(0, r - 40)}, ${Math.max(0, g - 40)}, ${Math.max(0, b - 30)})`);
     }
 
     // Selection highlight
