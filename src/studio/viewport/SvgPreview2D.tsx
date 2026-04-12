@@ -238,7 +238,7 @@ function enhanceSvg(
   selectedPathId: string | null,
   profileCutId: string | null,
   bitDiameter: number,
-  material: { width: number; height: number }
+  material: { width: number; height: number; thickness: number }
 ): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgText, 'image/svg+xml');
@@ -282,32 +282,37 @@ function enhanceSvg(
       styles.push('stroke-linejoin: round');
     }
 
-    // Profile cut — orange dashed outline
+    // Depth-proportional shading: darker = deeper cut
+    const depth = assignment?.depth ?? 0;
+    const depthRatio = Math.min(1, depth / material.thickness); // 0 = face, 1 = full through
+
     if (isProfileCut) {
+      // Profile cut — orange dashed outline, dark fill showing through-cut
       if (hasStroke) {
         el.setAttribute('stroke', '#ff8800');
         styles.push(`stroke-dasharray: ${(bitStrokeWidth * 2).toFixed(1)} ${bitStrokeWidth.toFixed(1)}`);
       }
+      el.setAttribute('fill', `rgba(40, 20, 0, 0.7)`);
       filters.push('drop-shadow(0 0 4px #ff8800)');
-      styles.push('opacity: 0.9');
     } else if (depthType === 'relief') {
-      filters.push('drop-shadow(0 0 3px #4488ff)');
-      styles.push('opacity: 0.85');
-      // Fill interior to show pocket region
-      el.setAttribute('fill', 'rgba(34, 85, 170, 0.4)');
-      if (hasStroke) el.setAttribute('stroke', '#4488ff');
-    } else if (depthType === 'through' && !isProfileCut) {
-      filters.push('drop-shadow(0 0 3px #ff4444)');
-      styles.push('opacity: 0.85');
-      el.setAttribute('fill', 'rgba(170, 34, 34, 0.4)');
-      if (hasStroke) el.setAttribute('stroke', '#ff4444');
+      // Relief — darken proportionally to depth
+      // Shallow cut = subtle shadow, deep cut = very dark
+      const darkness = 0.15 + depthRatio * 0.55; // 0.15 to 0.70
+      el.setAttribute('fill', `rgba(0, 0, 0, ${darkness.toFixed(2)})`);
+      if (hasStroke) el.setAttribute('stroke', `rgba(30, 80, 160, 0.8)`);
+    } else if (depthType === 'through') {
+      // Through-cut — nearly black / hole appearance
+      el.setAttribute('fill', `rgba(10, 5, 0, 0.80)`);
+      if (hasStroke) el.setAttribute('stroke', '#882222');
     } else {
-      // Face — make fill transparent so click-through works for paint bucket
+      // Face — stays at surface level. Show original colors.
+      // Add subtle raised appearance (lighter border) for clarity against pocketed neighbors
       const currentFill = el.getAttribute('fill');
       if (currentFill === 'none' || !currentFill) {
-        // Outline-only elements: add a very subtle transparent fill for hit detection
         el.setAttribute('fill', 'rgba(0, 0, 0, 0.02)');
       }
+      // Face elements get a subtle bright edge to show they're "raised"
+      filters.push('drop-shadow(1px 1px 1px rgba(0,0,0,0.3))');
     }
 
     // Selection highlight
