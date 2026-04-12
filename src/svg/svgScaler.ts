@@ -21,11 +21,14 @@ export function computeSvgTransform(
   svgBounds: { width: number; height: number; minX: number; minY: number },
   material: Material,
   workOrigin: WorkOrigin = 'center',
-  override?: SvgTransformOverride
+  override?: SvgTransformOverride,
+  edgeClearance: number = 0
 ): SvgTransform {
-  // Base scale: fit SVG to material, uniform to preserve aspect ratio
-  const scaleX = material.width / svgBounds.width;
-  const scaleY = material.height / svgBounds.height;
+  // Scale SVG to fit within the SAFE area (material minus edge clearance)
+  const safeWidth = material.width - 2 * edgeClearance;
+  const safeHeight = material.height - 2 * edgeClearance;
+  const scaleX = safeWidth / svgBounds.width;
+  const scaleY = safeHeight / svgBounds.height;
   let uniformScale = Math.min(scaleX, scaleY);
 
   // Apply user scale override

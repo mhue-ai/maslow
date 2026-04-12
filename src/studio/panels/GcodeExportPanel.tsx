@@ -48,7 +48,7 @@ export function GcodeExportPanel() {
 
     try {
       const transform = computeSvgTransform(
-        svgBounds, material, toolConfig.workOrigin, svgTransformOverride
+        svgBounds, material, toolConfig.workOrigin, svgTransformOverride, toolConfig.edgeClearance
       );
 
       const gen = generateGcode(

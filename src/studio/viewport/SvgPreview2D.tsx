@@ -478,7 +478,9 @@ function createRingShapes(
         const filters: string[] = [];
 
         if (level <= 0) {
-          fill = '#c4a66a'; // Material color — the ring shows as wood background
+          // Face-level ring: slightly lighter than material with visible outline
+          fill = '#d4b87a';
+          stroke = '#aa885588';
         } else if (level >= material.thickness) {
           fill = '#111111';
         } else {

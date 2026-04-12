@@ -13,8 +13,8 @@ export function CutPreview() {
 
   const transform = useMemo(() => {
     if (!svgBounds) return null;
-    return computeSvgTransform(svgBounds, material, toolConfig.workOrigin, svgTransformOverride);
-  }, [svgBounds, material, toolConfig.workOrigin, svgTransformOverride]);
+    return computeSvgTransform(svgBounds, material, toolConfig.workOrigin, svgTransformOverride, toolConfig.edgeClearance);
+  }, [svgBounds, material, toolConfig.workOrigin, svgTransformOverride, toolConfig.edgeClearance]);
 
   if (paths.length === 0 || !transform) return null;
 
