@@ -202,6 +202,13 @@ export const useDesignStore = create<DesignState>((set, get) => ({
       if (idx < 0) return s;
       const newIdx = direction === 'up' ? idx - 1 : idx + 1;
       if (newIdx < 0 || newIdx >= order.length) return s;
+      // Profile cut must always stay last — prevent moving it up
+      // or moving another shape below it
+      if (s.profileCutId) {
+        const profileIdx = order.indexOf(s.profileCutId);
+        if (pathId === s.profileCutId && direction === 'up') return s;
+        if (pathId !== s.profileCutId && newIdx >= profileIdx) return s;
+      }
       [order[idx], order[newIdx]] = [order[newIdx], order[idx]];
       return { operationOrder: order };
     });

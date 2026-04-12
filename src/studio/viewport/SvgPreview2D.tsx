@@ -44,7 +44,7 @@ export function SvgPreview2D() {
     const thickness = material.thickness;
     const next = current + STEP_MM;
     setShapeLevel(shapeId, next > thickness ? 0 : next);
-  }, [shapeLevels, setShapeLevel, material.thickness, profileCutId]);
+  }, [shapeLevels, setShapeLevel, material.thickness]);
 
   // Paint-bucket click handler
   const handleClick = useCallback((e: React.MouseEvent) => {
@@ -116,7 +116,7 @@ export function SvgPreview2D() {
         stepDeeper(bestId);
       }
     }
-  }, [shapeLevels, selectPath, setShapeLevel, stepDeeper, dragMode !== 'none', svgText]);
+  }, [shapeLevels, selectPath, setShapeLevel, stepDeeper, dragMode, svgText]);
 
 
   // Mouse wheel zoom
@@ -156,13 +156,14 @@ export function SvgPreview2D() {
       if (!containerEl) return;
       const matEl = containerEl.closest('[style*="aspectRatio"]') ?? containerEl;
       const pixelWidth = matEl.getBoundingClientRect().width;
-      const mmPerPixel = material.width / (pixelWidth / zoom);
+      // getBoundingClientRect already reflects zoom, so no zoom division needed
+      const mmPerPixel = material.width / pixelWidth;
       setSvgTransformOverride({
         offsetX: dragStart.current.ox + dx * mmPerPixel,
         offsetY: dragStart.current.oy - dy * mmPerPixel, // Y inverted
       });
     }
-  }, [dragMode, zoom, material.width, setSvgTransformOverride]);
+  }, [dragMode, material.width, setSvgTransformOverride]);
 
   const handleMouseUp = useCallback(() => {
     setDragMode('none');
@@ -488,10 +489,13 @@ function createRingShapes(
  * If reverse=true, reverses the point order (for creating holes in compound paths).
  */
 function polygonPointsToPath(points: string, reverse: boolean): string {
-  const pairs = points.trim().split(/\s+/).map((p) => {
-    const [x, y] = p.split(',').map(Number);
-    return { x, y };
-  });
+  // Parse SVG polygon points — handles multiple formats:
+  // "x,y x,y x,y"  or  "x y x y x y"  or  "x, y, x, y"
+  const nums = points.trim().replace(/,/g, ' ').split(/\s+/).map(Number).filter((n) => !isNaN(n));
+  const pairs: { x: number; y: number }[] = [];
+  for (let i = 0; i < nums.length - 1; i += 2) {
+    pairs.push({ x: nums[i], y: nums[i + 1] });
+  }
 
   if (reverse) pairs.reverse();
   if (pairs.length === 0) return '';
