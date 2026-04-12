@@ -1,7 +1,7 @@
 import { useRef, useState, useCallback, useMemo, useEffect } from 'react';
 import { useDesignStore } from '../../store/designStore';
 import { computeSvgTransform, transformPoint } from '../../svg/svgScaler';
-import * as ClipperLib from 'js-angusj-clipper';
+import { traceShapes, type TracedShape } from '../../svg/shapeTracer';
 
 /**
  * Clean 2D shape renderer — builds a fresh SVG from extracted polygon data.
@@ -36,88 +36,47 @@ export function SvgPreview2D() {
     return computeSvgTransform(svgBounds, material, toolConfig.workOrigin, svgTransformOverride, toolConfig.edgeClearance);
   }, [svgBounds, material, toolConfig.workOrigin, svgTransformOverride, toolConfig.edgeClearance]);
 
-  // Clipper instance for polygon simplification
-  const [clipper, setClipper] = useState<ClipperLib.ClipperLibWrapper | null>(null);
+  // Trace shapes from SVG: rasterize each shape then trace clean boundary
+  const svgText = useDesignStore((s) => s.svgText);
+  const shapeRegistry = useDesignStore((s) => s.shapeRegistry);
+  const [tracedShapes, setTracedShapes] = useState<TracedShape[]>([]);
+
   useEffect(() => {
-    ClipperLib.loadNativeClipperLibInstanceAsync(
-      ClipperLib.NativeClipperLibRequestedFormat.WasmWithAsmJsFallback as any
-    ).then(setClipper).catch(() => {});
-  }, []);
-
-  // Extract clean polygon data from Three.js shapes
-  const shapePolygons = useMemo(() => {
-    if (!transform || paths.length === 0) return [];
-
-    const SCALE = 10000;
-    const polys: { id: string; name: string; points: string; bbox: { x: number; y: number; w: number; h: number } }[] = [];
-
-    for (const path of paths) {
-      for (const shape of path.shapes) {
-        const rawPts = shape.getPoints(128);
-        if (rawPts.length < 3) continue;
-
-        // Transform each point from SVG space to material space
-        // Negate Y because material space is Y-up but SVG viewBox renders Y-down
-        const pts = rawPts.map((p) => {
-          const tp = transformPoint(p.x, p.y, transform);
-          return { x: tp.x, y: -tp.y };
-        });
-
-        // Compute bounding box
-        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-        for (const p of pts) {
-          if (p.x < minX) minX = p.x;
-          if (p.x > maxX) maxX = p.x;
-          if (p.y < minY) minY = p.y;
-          if (p.y > maxY) maxY = p.y;
-        }
-
-        const w = maxX - minX;
-        const h = maxY - minY;
-        const bboxArea = w * h;
-
-        // Only filter truly degenerate shapes — let Clipper handle self-intersections
-        if (bboxArea < 0.01) continue; // Skip near-zero area shapes
-
-        // Use Clipper to simplify self-intersecting polygons into clean shapes
-        let cleanPts = pts;
-        if (clipper && pts.length > 50) {
-          try {
-            const scaled = pts.map(p => ({ x: Math.round(p.x * SCALE), y: Math.round(p.y * SCALE) }));
-            const simplified = clipper.simplifyPolygon(scaled, ClipperLib.PolyFillType.EvenOdd);
-            if (simplified && simplified.length > 0 && simplified[0].length >= 3) {
-              // Use the largest simplified polygon
-              let best = simplified[0];
-              for (const s of simplified) {
-                if (s.length > best.length) best = s;
-              }
-              cleanPts = best.map(p => ({ x: p.x / SCALE, y: p.y / SCALE }));
-            }
-          } catch { /* fallback to original pts */ }
-        }
-
-        // Recompute bbox from cleaned points
-        let cMinX = Infinity, cMaxX = -Infinity, cMinY = Infinity, cMaxY = -Infinity;
-        for (const p of cleanPts) {
-          if (p.x < cMinX) cMinX = p.x;
-          if (p.x > cMaxX) cMaxX = p.x;
-          if (p.y < cMinY) cMinY = p.y;
-          if (p.y > cMaxY) cMaxY = p.y;
-        }
-
-        const pointsStr = cleanPts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
-
-        polys.push({
-          id: path.data.id,
-          name: path.data.name,
-          points: pointsStr,
-          bbox: { x: cMinX, y: cMinY, w: cMaxX - cMinX, h: cMaxY - cMinY },
-        });
-        break; // Only use the first shape per path (primary outline)
-      }
+    if (!svgText || shapeRegistry.length === 0) {
+      setTracedShapes([]);
+      return;
     }
-    return polys;
-  }, [paths, transform, clipper]);
+    // Trace shapes asynchronously (renders each to canvas, traces boundary)
+    traceShapes(svgText, shapeRegistry, 2000).then(setTracedShapes).catch(() => setTracedShapes([]));
+  }, [svgText, shapeRegistry]);
+
+  // Convert traced shapes to polygon data for rendering
+  const shapePolygons = useMemo(() => {
+    if (!transform || tracedShapes.length === 0) return [];
+
+    return tracedShapes.map((ts) => {
+      // Transform traced polygon from SVG viewBox coords to material space
+      const pts = ts.polygon.map((p) => {
+        const tp = transformPoint(p.x, p.y, transform);
+        return { x: tp.x, y: -tp.y }; // Negate Y for SVG rendering
+      });
+
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const p of pts) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+
+      return {
+        id: ts.id,
+        name: ts.name,
+        points: pts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' '),
+        bbox: { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
+      };
+    });
+  }, [tracedShapes, transform]);
 
   // Detect rings (gaps between nested shapes)
   const ringPolygons = useMemo(() => {
