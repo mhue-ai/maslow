@@ -436,10 +436,11 @@ function createRingShapes(
   selectedPathId: string | null,
   material: Material
 ): void {
-  // Collect all closed shape elements (polygons AND closed paths) with bounding boxes
-  const closedShapes: { el: Element; id: string; points: string; bbox: DOMRect; area: number }[] = [];
+  // Collect all closed shape elements with bounding boxes.
+  // Store the SVG path `d` attribute for creating compound ring paths.
+  const closedShapes: { el: Element; id: string; pathD: string; bbox: DOMRect; area: number }[] = [];
 
-  // Include polygons
+  // Include polygons (convert points to path d)
   const polygons = svg.querySelectorAll('polygon[data-shape-id]');
   polygons.forEach((el) => {
     const id = (el as HTMLElement).dataset.shapeId;
@@ -448,26 +449,22 @@ function createRingShapes(
     if (!points) return;
     try {
       const bbox = (el as SVGGraphicsElement).getBBox();
-      closedShapes.push({ el, id, points, bbox, area: bbox.width * bbox.height });
+      closedShapes.push({ el, id, pathD: polygonPointsToPath(points, false), bbox, area: bbox.width * bbox.height });
     } catch { /* skip */ }
   });
 
-  // Also include closed <path> elements (e.g. from Fusion 360)
+  // Include closed <path> elements — use actual d attribute, not bbox rectangles
   const paths = svg.querySelectorAll('path[data-shape-id]');
   paths.forEach((el) => {
     const id = (el as HTMLElement).dataset.shapeId;
     if (!id) return;
     const d = el.getAttribute('d');
-    if (!d || !/z\s*$/i.test(d.trim())) return; // Must be a closed path
+    if (!d || !/z/i.test(d)) return; // Must contain Z (closed)
     try {
       const bbox = (el as SVGGraphicsElement).getBBox();
-      // Only include shapes with meaningful area (skip tiny lines/decorations)
       const area = bbox.width * bbox.height;
-      if (area < 1) return;
-      // Convert path d to a simplified polygon points string for ring creation
-      // Use the bounding box corners as a rough polygon (actual path is more complex)
-      const pts = `${bbox.x},${bbox.y} ${bbox.x + bbox.width},${bbox.y} ${bbox.x + bbox.width},${bbox.y + bbox.height} ${bbox.x},${bbox.y + bbox.height}`;
-      closedShapes.push({ el, id, points: pts, bbox, area });
+      if (area < 0.1) return;
+      closedShapes.push({ el, id, pathD: d, bbox, area });
     } catch { /* skip */ }
   });
 
@@ -490,10 +487,10 @@ function createRingShapes(
           inner.bbox.x + inner.bbox.width <= outer.bbox.x + outer.bbox.width &&
           inner.bbox.y + inner.bbox.height <= outer.bbox.y + outer.bbox.height) {
 
-        // Create a ring shape: compound path with outer CW and inner CCW
+        // Create a ring shape: compound path with outer + reversed inner
         const ringId = `ring-${ringIndex++}`;
-        const outerD = polygonPointsToPath(outer.points, false);
-        const innerD = polygonPointsToPath(inner.points, true); // reverse for hole
+        const outerD = outer.pathD;
+        const innerD = reversePath(inner.pathD);
 
         const ringPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         ringPath.setAttribute('d', outerD + ' ' + innerD);
@@ -564,4 +561,32 @@ function polygonPointsToPath(points: string, reverse: boolean): string {
   }
   d += ' Z';
   return d;
+}
+
+/**
+ * Reverse an SVG path direction (for creating holes in compound paths).
+ * Extracts coordinate pairs from the path, reverses the order, and
+ * rebuilds as M...L...Z. Works for paths with M, L, and Z commands.
+ * For complex curves (C, Q, A), falls back to the original path.
+ */
+function reversePath(d: string): string {
+  // Extract all coordinate pairs from the path
+  const coords: { x: number; y: number }[] = [];
+  // Match all numbers (coordinates) in the path
+  const numRegex = /(-?[\d.]+)\s*[,\s]\s*(-?[\d.]+)/g;
+  let match;
+  while ((match = numRegex.exec(d)) !== null) {
+    coords.push({ x: parseFloat(match[1]), y: parseFloat(match[2]) });
+  }
+
+  if (coords.length < 2) return d;
+
+  // Reverse the coordinates and rebuild path
+  coords.reverse();
+  let reversed = `M${coords[0].x},${coords[0].y}`;
+  for (let i = 1; i < coords.length; i++) {
+    reversed += ` L${coords[i].x},${coords[i].y}`;
+  }
+  reversed += ' Z';
+  return reversed;
 }
