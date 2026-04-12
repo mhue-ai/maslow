@@ -42,10 +42,10 @@ export function SvgImportPanel() {
         return;
       }
 
+      setShapeRegistry(parsed.shapeRegistry);  // Must be before setPaths
       setPaths(converted);
       setSvgBounds(parsed.viewBox);
       setSvgText(text);
-      setShapeRegistry(parsed.shapeRegistry);
       setFileName(file.name);
     } catch (err) {
       setWarning(`Failed to parse SVG: ${err instanceof Error ? err.message : String(err)}`);

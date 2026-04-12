@@ -131,14 +131,26 @@ export const useDesignStore = create<DesignState>((set, get) => ({
       }
     }
 
-    // All shapes start at level 0 (face), except profile cut → material thickness
+    // ALL shapes start at level 0 (face), except profile cut → material thickness.
+    // Include shapes from the registry too (not just converted paths),
+    // so every clickable element in the 2D preview has an explicit level.
     const levels = new Map<string, ShapeLevel>();
     const thickness = get().material.thickness;
+    const registry = get().shapeRegistry;
+
+    // First: entries for all converted paths
     for (const path of p) {
       levels.set(path.data.id, {
         shapeId: path.data.id,
         level: path.data.id === profileId ? thickness : 0,
       });
+    }
+
+    // Second: entries for registry shapes that weren't in converted paths
+    for (const entry of registry) {
+      if (!entry.isText && !levels.has(entry.id)) {
+        levels.set(entry.id, { shapeId: entry.id, level: 0 });
+      }
     }
 
     // Operation order: all non-profile shapes first, profile cut always last
