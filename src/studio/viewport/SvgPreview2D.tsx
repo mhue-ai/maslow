@@ -2,8 +2,8 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { useDesignStore } from '../../store/designStore';
 
 /**
- * Native 2D SVG preview with zoom/pan and clickable depth assignment.
- * Renders the SVG exactly as a browser would — text, fonts, strokes, fills.
+ * Native 2D SVG preview with zoom/pan, paint-bucket region selection,
+ * and bit kerf visualization.
  */
 export function SvgPreview2D() {
   const svgText = useDesignStore((s) => s.svgText);
@@ -17,6 +17,7 @@ export function SvgPreview2D() {
   const toolConfig = useDesignStore((s) => s.toolConfig);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const svgContainerRef = useRef<HTMLDivElement>(null);
   const [svgDoc, setSvgDoc] = useState<string | null>(null);
 
   // Zoom/pan state
@@ -25,37 +26,94 @@ export function SvgPreview2D() {
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
-  // Process SVG text with interactivity enhancements
+  // Process SVG
   useEffect(() => {
     if (!svgText) { setSvgDoc(null); return; }
     setSvgDoc(enhanceSvg(svgText, depthAssignments, selectedPathId, profileCutId, toolConfig.bitDiameter, material));
   }, [svgText, depthAssignments, selectedPathId, profileCutId, toolConfig.bitDiameter, material]);
 
-  // Handle clicks on SVG elements — toggle pocket/through
+  // Paint-bucket click handler: find the smallest enclosing shape
   const handleClick = useCallback((e: React.MouseEvent) => {
-    if (isPanning) return; // Don't toggle during pan
+    if (isPanning) return;
 
+    // First: check if user clicked directly on an SVG element with data-path-index
     const target = e.target as Element;
     let el: Element | null = target;
     while (el && !(el as HTMLElement).dataset?.pathIndex) {
       el = el.parentElement;
     }
-    if (!el) return;
-    const pathIndex = (el as HTMLElement).dataset.pathIndex;
-    if (!pathIndex) return;
 
-    const pathId = `path-${pathIndex}`;
-    selectPath(pathId);
-
-    const assignment = depthAssignments.get(pathId);
-    const currentType = assignment?.type ?? 'face';
-
-    if (e.shiftKey) {
-      setDepth(pathId, currentType === 'through' ? 'face' : 'through');
-    } else {
-      setDepth(pathId, currentType === 'relief' ? 'face' : 'relief');
+    if (el) {
+      // Clicked on a known element — select it and toggle depth
+      const pathIndex = (el as HTMLElement).dataset.pathIndex;
+      if (!pathIndex) return;
+      const pathId = `path-${pathIndex}`;
+      selectPath(pathId);
+      const assignment = depthAssignments.get(pathId);
+      const currentType = assignment?.type ?? 'face';
+      if (e.shiftKey) {
+        setDepth(pathId, currentType === 'through' ? 'face' : 'through');
+      } else {
+        setDepth(pathId, currentType === 'relief' ? 'face' : 'relief');
+      }
+      return;
     }
-  }, [depthAssignments, selectPath, setDepth, isPanning]);
+
+    // Clicked on empty space — find the smallest enclosing closed shape (paint bucket)
+    if (!svgContainerRef.current || !svgText) return;
+
+    const svgEl = svgContainerRef.current.querySelector('svg');
+    if (!svgEl) return;
+
+    // Get click position in SVG coordinate space
+    const svgPoint = svgEl.createSVGPoint();
+    svgPoint.x = e.clientX;
+    svgPoint.y = e.clientY;
+
+    // Transform screen coords to SVG coords
+    const ctm = svgEl.getScreenCTM();
+    if (!ctm) return;
+    const svgCoord = svgPoint.matrixTransform(ctm.inverse());
+
+    // Find all closed shapes and test point-in-polygon
+    const closedElements = svgEl.querySelectorAll('polygon, path, rect, circle, ellipse');
+    let bestId: string | null = null;
+    let bestArea = Infinity;
+
+    closedElements.forEach((shape) => {
+      const pathIndex = (shape as HTMLElement).dataset?.pathIndex;
+      if (!pathIndex) return;
+
+      // Skip non-closed elements (lines, text)
+      const tagName = shape.tagName.toLowerCase();
+      if (tagName === 'line' || tagName === 'text') return;
+
+      // Use SVG's built-in hit testing
+      if (shape instanceof SVGGeometryElement) {
+        const isInside = shape.isPointInFill(svgCoord);
+        if (isInside) {
+          // Calculate bounding box area to find the SMALLEST enclosing shape
+          const bbox = shape.getBBox();
+          const area = bbox.width * bbox.height;
+          if (area < bestArea) {
+            bestArea = area;
+            bestId = `path-${pathIndex}`;
+          }
+        }
+      }
+    });
+
+    if (bestId) {
+      selectPath(bestId);
+      const assignment = depthAssignments.get(bestId);
+      const currentType = assignment?.type ?? 'face';
+      if (e.shiftKey) {
+        setDepth(bestId, currentType === 'through' ? 'face' : 'through');
+      } else {
+        setDepth(bestId, currentType === 'relief' ? 'face' : 'relief');
+      }
+    }
+  }, [depthAssignments, selectPath, setDepth, isPanning, svgText]);
 
   // Mouse wheel zoom
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -108,7 +166,7 @@ export function SvgPreview2D() {
         height: '100%',
         overflow: 'hidden',
         background: '#1a1a2e',
-        cursor: isPanning ? 'grabbing' : 'default',
+        cursor: isPanning ? 'grabbing' : 'crosshair',
         position: 'relative',
       }}
     >
@@ -128,7 +186,7 @@ export function SvgPreview2D() {
         position: 'absolute', bottom: 8, left: 8, zIndex: 10,
         fontSize: 10, color: '#555',
       }}>
-        Scroll = zoom. Ctrl+drag = pan. Click = pocket. Shift+click = through.
+        Click area = pocket. Shift+click = through. Ctrl+drag = pan. Scroll = zoom.
       </div>
 
       {/* Material surface with SVG */}
@@ -141,6 +199,7 @@ export function SvgPreview2D() {
         transition: isPanning ? 'none' : 'transform 0.1s ease-out',
       }}>
         <div
+          ref={svgContainerRef}
           style={{
             background: '#c4a66a',
             width: `${Math.min(800, material.width * 0.5)}px`,
@@ -158,7 +217,6 @@ export function SvgPreview2D() {
             }}
             dangerouslySetInnerHTML={svgDoc ? { __html: svgDoc } : undefined}
           />
-          {/* Material dimensions label */}
           <div style={{
             position: 'absolute', bottom: -20, left: 0, right: 0,
             textAlign: 'center', fontSize: 10, color: '#666',
@@ -198,7 +256,6 @@ function enhanceSvg(
     const parts = vb.split(/[\s,]+/).map(Number);
     if (parts[2]) svgWidth = parts[2];
   }
-  // Scale bit diameter to SVG coordinate space
   const bitStrokeWidth = (bitDiameter / material.width) * svgWidth;
 
   const shapeElements = svg.querySelectorAll(
@@ -214,7 +271,7 @@ function enhanceSvg(
     const assignment = depthAssignments.get(pathId);
     const isSelected = selectedPathId === pathId;
     const depthType = assignment?.type ?? 'face';
-    const styles: string[] = ['cursor: pointer'];
+    const styles: string[] = ['cursor: crosshair'];
     const filters: string[] = [];
 
     // Scale strokes to represent bit kerf width
@@ -236,15 +293,21 @@ function enhanceSvg(
     } else if (depthType === 'relief') {
       filters.push('drop-shadow(0 0 3px #4488ff)');
       styles.push('opacity: 0.85');
-      // Show pocket fill area — fill the interior with blue to visualize the pocketed region
+      // Fill interior to show pocket region
       el.setAttribute('fill', 'rgba(34, 85, 170, 0.4)');
       if (hasStroke) el.setAttribute('stroke', '#4488ff');
     } else if (depthType === 'through' && !isProfileCut) {
       filters.push('drop-shadow(0 0 3px #ff4444)');
       styles.push('opacity: 0.85');
-      // Show through-cut area
       el.setAttribute('fill', 'rgba(170, 34, 34, 0.4)');
       if (hasStroke) el.setAttribute('stroke', '#ff4444');
+    } else {
+      // Face — make fill transparent so click-through works for paint bucket
+      const currentFill = el.getAttribute('fill');
+      if (currentFill === 'none' || !currentFill) {
+        // Outline-only elements: add a very subtle transparent fill for hit detection
+        el.setAttribute('fill', 'rgba(0, 0, 0, 0.02)');
+      }
     }
 
     // Selection highlight
