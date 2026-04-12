@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Shape } from 'three';
 import type { Material, DepthAssignment, ToolConfig, SvgPathData, CutStrategy, ProfileOffset, SvgTransformOverride, DesignCopy } from '../types/design';
+import type { SvgShapeEntry } from '../svg/svgParser';
 import { DEFAULT_MATERIAL, DEFAULT_TOOL_CONFIG, DEFAULT_SVG_TRANSFORM } from '../types/design';
 
 export interface ParsedPath {
@@ -31,6 +32,10 @@ interface DesignState {
   // Raw SVG text
   svgText: string | null;
   setSvgText: (t: string | null) => void;
+
+  // SVG shape registry (canonical list of shapes from SVG DOM)
+  shapeRegistry: SvgShapeEntry[];
+  setShapeRegistry: (r: SvgShapeEntry[]) => void;
 
   // SVG bounding box
   svgBounds: { width: number; height: number; minX: number; minY: number } | null;
@@ -168,6 +173,9 @@ export const useDesignStore = create<DesignState>((set, get) => ({
 
   svgText: null,
   setSvgText: (t) => set({ svgText: t }),
+
+  shapeRegistry: [],
+  setShapeRegistry: (r) => set({ shapeRegistry: r }),
 
   svgBounds: null,
   setSvgBounds: (b) => set({ svgBounds: b }),

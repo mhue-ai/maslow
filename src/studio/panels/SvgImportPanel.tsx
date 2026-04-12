@@ -11,6 +11,7 @@ export function SvgImportPanel() {
   const setPaths = useDesignStore((s) => s.setPaths);
   const setSvgBounds = useDesignStore((s) => s.setSvgBounds);
   const setSvgText = useDesignStore((s) => s.setSvgText);
+  const setShapeRegistry = useDesignStore((s) => s.setShapeRegistry);
   const paths = useDesignStore((s) => s.paths);
 
   const handleFile = async (file: File) => {
@@ -44,6 +45,7 @@ export function SvgImportPanel() {
       setPaths(converted);
       setSvgBounds(parsed.viewBox);
       setSvgText(text);
+      setShapeRegistry(parsed.shapeRegistry);
       setFileName(file.name);
     } catch (err) {
       setWarning(`Failed to parse SVG: ${err instanceof Error ? err.message : String(err)}`);

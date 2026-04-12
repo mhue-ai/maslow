@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { useDesignStore } from '../../store/designStore';
+import type { SvgShapeEntry } from '../../svg/svgParser';
 
 /**
  * Native 2D SVG preview with zoom/pan, paint-bucket region selection,
@@ -15,6 +16,7 @@ export function SvgPreview2D() {
   const svgTransformOverride = useDesignStore((s) => s.svgTransformOverride);
   const profileCutId = useDesignStore((s) => s.profileCutId);
   const toolConfig = useDesignStore((s) => s.toolConfig);
+  const shapeRegistry = useDesignStore((s) => s.shapeRegistry);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const svgContainerRef = useRef<HTMLDivElement>(null);
@@ -29,8 +31,8 @@ export function SvgPreview2D() {
   // Process SVG
   useEffect(() => {
     if (!svgText) { setSvgDoc(null); return; }
-    setSvgDoc(enhanceSvg(svgText, depthAssignments, selectedPathId, profileCutId, toolConfig.bitDiameter, material));
-  }, [svgText, depthAssignments, selectedPathId, profileCutId, toolConfig.bitDiameter, material]);
+    setSvgDoc(enhanceSvg(svgText, depthAssignments, selectedPathId, profileCutId, toolConfig.bitDiameter, material, shapeRegistry));
+  }, [svgText, depthAssignments, selectedPathId, profileCutId, toolConfig.bitDiameter, material, shapeRegistry]);
 
   const STEP_MM = 2; // Each click deepens by 2mm
 
@@ -66,20 +68,18 @@ export function SvgPreview2D() {
     // First: check if user clicked directly on an SVG element
     const target = e.target as Element;
     let el: Element | null = target;
-    while (el && !(el as HTMLElement).dataset?.pathIndex) {
+    while (el && !(el as HTMLElement).dataset?.shapeId) {
       el = el.parentElement;
     }
 
     if (el) {
-      const pathIndex = (el as HTMLElement).dataset.pathIndex;
-      if (!pathIndex) return;
-      const pathId = `path-${pathIndex}`;
-      selectPath(pathId);
+      const shapeId = (el as HTMLElement).dataset.shapeId;
+      if (!shapeId) return;
+      selectPath(shapeId);
       if (e.shiftKey) {
-        // Shift+click = reset to face
-        setDepth(pathId, 'face');
+        setDepth(shapeId, 'face');
       } else {
-        stepDeeper(pathId);
+        stepDeeper(shapeId);
       }
       return;
     }
@@ -96,15 +96,13 @@ export function SvgPreview2D() {
     if (!ctm) return;
     const svgCoord = svgPoint.matrixTransform(ctm.inverse());
 
-    const closedElements = svgEl.querySelectorAll('polygon, path, rect, circle, ellipse');
+    const closedElements = svgEl.querySelectorAll('[data-shape-id]');
     let bestId: string | null = null;
     let bestArea = Infinity;
 
     closedElements.forEach((shape) => {
-      const pathIndex = (shape as HTMLElement).dataset?.pathIndex;
-      if (!pathIndex) return;
-      const tagName = shape.tagName.toLowerCase();
-      if (tagName === 'line' || tagName === 'text') return;
+      const shapeId = (shape as HTMLElement).dataset?.shapeId;
+      if (!shapeId) return;
 
       if (shape instanceof SVGGeometryElement) {
         const isInside = shape.isPointInFill(svgCoord);
@@ -113,7 +111,7 @@ export function SvgPreview2D() {
           const area = bbox.width * bbox.height;
           if (area < bestArea) {
             bestArea = area;
-            bestId = `path-${pathIndex}`;
+            bestId = shapeId;
           }
         }
       }
@@ -252,7 +250,8 @@ function enhanceSvg(
   selectedPathId: string | null,
   profileCutId: string | null,
   bitDiameter: number,
-  material: { width: number; height: number; thickness: number }
+  material: { width: number; height: number; thickness: number },
+  shapeRegistry: SvgShapeEntry[]
 ): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgText, 'image/svg+xml');
@@ -272,27 +271,31 @@ function enhanceSvg(
   }
   const bitStrokeWidth = (bitDiameter / material.width) * svgWidth;
 
-  // Index only shape elements — NOT text (SVGLoader skips text, so indices would mismatch)
-  // Text stays visible in the native SVG render but isn't clickable for depth assignment
-  const shapeElements = svg.querySelectorAll(
-    'path, polygon, polyline, rect, circle, ellipse, line'
+  // Query ALL shape elements in DOM order — matches the registry order
+  const allElements = svg.querySelectorAll(
+    'path, polygon, polyline, rect, circle, ellipse, line, text'
   );
 
-  // Style text elements separately: always show at face level (material color)
-  const textElements = svg.querySelectorAll('text');
-  textElements.forEach((textEl) => {
-    textEl.setAttribute('fill', '#c4a66a');
-    textEl.setAttribute('style', 'cursor: default; filter: drop-shadow(1px 2px 2px rgba(0,0,0,0.5)); pointer-events: none;');
-  });
+  let registryIdx = 0;
+  allElements.forEach((el) => {
+    // Match this DOM element to its registry entry by sequential position
+    const entry = shapeRegistry[registryIdx];
+    registryIdx++;
+    if (!entry) return;
 
-  let index = 0;
-  shapeElements.forEach((el) => {
-    const pathId = `path-${index}`;
-    const isProfileCut = pathId === profileCutId;
-    el.setAttribute('data-path-index', String(index));
+    // Text elements: render at face level, not clickable
+    if (entry.isText) {
+      el.setAttribute('fill', '#c4a66a');
+      el.setAttribute('style', 'cursor: default; filter: drop-shadow(1px 2px 2px rgba(0,0,0,0.5)); pointer-events: none;');
+      return;
+    }
 
-    const assignment = depthAssignments.get(pathId);
-    const isSelected = selectedPathId === pathId;
+    const shapeId = entry.id;
+    const isProfileCut = shapeId === profileCutId;
+    el.setAttribute('data-shape-id', shapeId);
+
+    const assignment = depthAssignments.get(shapeId);
+    const isSelected = selectedPathId === shapeId;
     const depthType = assignment?.type ?? 'face';
     const styles: string[] = ['cursor: crosshair'];
     const filters: string[] = [];
@@ -355,7 +358,6 @@ function enhanceSvg(
     }
 
     el.setAttribute('style', styles.join('; '));
-    index++;
   });
 
   return new XMLSerializer().serializeToString(svg);
