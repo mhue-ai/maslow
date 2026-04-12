@@ -32,11 +32,38 @@ export function SvgPreview2D() {
     setSvgDoc(enhanceSvg(svgText, depthAssignments, selectedPathId, profileCutId, toolConfig.bitDiameter, material));
   }, [svgText, depthAssignments, selectedPathId, profileCutId, toolConfig.bitDiameter, material]);
 
-  // Paint-bucket click handler: find the smallest enclosing shape
+  const STEP_MM = 2; // Each click deepens by 2mm
+
+  // Step a path deeper: face → relief 2mm → 4mm → ... → through → face
+  const stepDeeper = useCallback((pathId: string) => {
+    const assignment = depthAssignments.get(pathId);
+    const currentType = assignment?.type ?? 'face';
+    const currentDepth = assignment?.depth ?? 0;
+    const thickness = material.thickness;
+
+    if (currentType === 'through') {
+      // Already through — reset to face
+      setDepth(pathId, 'face');
+    } else if (currentType === 'face') {
+      // Start cutting — first relief step
+      setDepth(pathId, 'relief', STEP_MM);
+    } else {
+      // Already relief — go deeper
+      const nextDepth = currentDepth + STEP_MM;
+      if (nextDepth >= thickness) {
+        // Reached material thickness — set to through-cut
+        setDepth(pathId, 'through');
+      } else {
+        setDepth(pathId, 'relief', nextDepth);
+      }
+    }
+  }, [depthAssignments, setDepth, material.thickness]);
+
+  // Paint-bucket click handler
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (isPanning) return;
 
-    // First: check if user clicked directly on an SVG element with data-path-index
+    // First: check if user clicked directly on an SVG element
     const target = e.target as Element;
     let el: Element | null = target;
     while (el && !(el as HTMLElement).dataset?.pathIndex) {
@@ -44,38 +71,31 @@ export function SvgPreview2D() {
     }
 
     if (el) {
-      // Clicked on a known element — select it and toggle depth
       const pathIndex = (el as HTMLElement).dataset.pathIndex;
       if (!pathIndex) return;
       const pathId = `path-${pathIndex}`;
       selectPath(pathId);
-      const assignment = depthAssignments.get(pathId);
-      const currentType = assignment?.type ?? 'face';
       if (e.shiftKey) {
-        setDepth(pathId, currentType === 'through' ? 'face' : 'through');
+        // Shift+click = reset to face
+        setDepth(pathId, 'face');
       } else {
-        setDepth(pathId, currentType === 'relief' ? 'face' : 'relief');
+        stepDeeper(pathId);
       }
       return;
     }
 
-    // Clicked on empty space — find the smallest enclosing closed shape (paint bucket)
+    // Clicked on empty space — find the smallest enclosing closed shape
     if (!svgContainerRef.current || !svgText) return;
-
     const svgEl = svgContainerRef.current.querySelector('svg');
     if (!svgEl) return;
 
-    // Get click position in SVG coordinate space
     const svgPoint = svgEl.createSVGPoint();
     svgPoint.x = e.clientX;
     svgPoint.y = e.clientY;
-
-    // Transform screen coords to SVG coords
     const ctm = svgEl.getScreenCTM();
     if (!ctm) return;
     const svgCoord = svgPoint.matrixTransform(ctm.inverse());
 
-    // Find all closed shapes and test point-in-polygon
     const closedElements = svgEl.querySelectorAll('polygon, path, rect, circle, ellipse');
     let bestId: string | null = null;
     let bestArea = Infinity;
@@ -83,16 +103,12 @@ export function SvgPreview2D() {
     closedElements.forEach((shape) => {
       const pathIndex = (shape as HTMLElement).dataset?.pathIndex;
       if (!pathIndex) return;
-
-      // Skip non-closed elements (lines, text)
       const tagName = shape.tagName.toLowerCase();
       if (tagName === 'line' || tagName === 'text') return;
 
-      // Use SVG's built-in hit testing
       if (shape instanceof SVGGeometryElement) {
         const isInside = shape.isPointInFill(svgCoord);
         if (isInside) {
-          // Calculate bounding box area to find the SMALLEST enclosing shape
           const bbox = shape.getBBox();
           const area = bbox.width * bbox.height;
           if (area < bestArea) {
@@ -105,15 +121,13 @@ export function SvgPreview2D() {
 
     if (bestId) {
       selectPath(bestId);
-      const assignment = depthAssignments.get(bestId);
-      const currentType = assignment?.type ?? 'face';
       if (e.shiftKey) {
-        setDepth(bestId, currentType === 'through' ? 'face' : 'through');
+        setDepth(bestId, 'face');
       } else {
-        setDepth(bestId, currentType === 'relief' ? 'face' : 'relief');
+        stepDeeper(bestId);
       }
     }
-  }, [depthAssignments, selectPath, setDepth, isPanning, svgText]);
+  }, [depthAssignments, selectPath, setDepth, stepDeeper, isPanning, svgText]);
 
   // Mouse wheel zoom
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -186,7 +200,7 @@ export function SvgPreview2D() {
         position: 'absolute', bottom: 8, left: 8, zIndex: 10,
         fontSize: 10, color: '#555',
       }}>
-        Click area = pocket. Shift+click = through. Ctrl+drag = pan. Scroll = zoom.
+        Click = deepen 2mm per click. Shift+click = reset to face. Ctrl+drag = pan. Scroll = zoom.
       </div>
 
       {/* Material surface with SVG */}
