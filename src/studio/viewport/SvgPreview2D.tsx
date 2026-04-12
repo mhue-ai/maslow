@@ -470,30 +470,35 @@ function createRingShapes(
   // Sort by area, largest first
   closedShapes.sort((a, b) => b.area - a.area);
 
-  // For each shape, find its DIRECT parent (smallest enclosing shape).
-  // Create ONE ring per parent-child pair — the gap between them.
-  const usedOuters = new Set<string>();
-  let ringIndex = 0;
+  // Create rings ONLY between immediately adjacent nesting levels.
+  // For each inner shape, find its smallest enclosing outer shape.
+  // This creates exactly the right number of rings — one per gap.
+  const innerToOuter = new Map<number, number>(); // inner index → outer index
 
-  for (let i = 0; i < closedShapes.length; i++) {
-    const outer = closedShapes[i];
-    if (usedOuters.has(outer.id)) continue;
-
-    // Find the LARGEST child directly inside this outer (first-level nesting only)
-    let bestInnerIdx = -1;
-    for (let j = i + 1; j < closedShapes.length; j++) {
-      const inner = closedShapes[j];
+  for (let j = 1; j < closedShapes.length; j++) {
+    const inner = closedShapes[j];
+    // Find the SMALLEST outer that contains this inner (iterate from small to large)
+    for (let i = j - 1; i >= 0; i--) {
+      const outer = closedShapes[i];
       if (inner.bbox.x >= outer.bbox.x &&
           inner.bbox.y >= outer.bbox.y &&
           inner.bbox.x + inner.bbox.w <= outer.bbox.x + outer.bbox.w &&
           inner.bbox.y + inner.bbox.h <= outer.bbox.y + outer.bbox.h) {
-        bestInnerIdx = j;
-        break; // Take the first (largest) direct child
+        innerToOuter.set(j, i);
+        break; // Found the tightest enclosing shape
       }
     }
+  }
 
-    if (bestInnerIdx < 0) continue;
-    usedOuters.add(outer.id);
+  // Only create a ring if the outer shape doesn't already have its own
+  // tighter parent — this limits to first-level border gaps only
+  let ringIndex = 0;
+
+  for (const [innerIdx, outerIdx] of innerToOuter) {
+    // Only create ring for the outermost gap (outer shape has no parent itself)
+    if (innerToOuter.has(outerIdx)) continue;
+    const outer = closedShapes[outerIdx];
+    const bestInnerIdx = innerIdx;
 
     {
       const inner = closedShapes[bestInnerIdx];
