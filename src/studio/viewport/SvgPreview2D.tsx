@@ -76,26 +76,8 @@ export function SvgPreview2D() {
         const h = maxY - minY;
         const bboxArea = w * h;
 
-        // Compute actual polygon area (shoelace formula) to detect degenerate shapes
-        let polyArea = 0;
-        for (let k = 0; k < pts.length; k++) {
-          const j = (k + 1) % pts.length;
-          polyArea += pts[k].x * pts[j].y;
-          polyArea -= pts[j].x * pts[k].y;
-        }
-        polyArea = Math.abs(polyArea) / 2;
-
-        // Filter degenerate shapes:
-        // 1. Too small (less than 1 sq mm in material space)
-        if (polyArea < 1) continue;
-        // 2. Extremely thin (aspect ratio > 20:1)
-        if (w > 0 && h > 0 && (w / h > 20 || h / w > 20)) continue;
-        // 3. Complex self-intersecting paths: high point count + low fill ratio
-        //    Simple shapes (< 50 points) are fine at any fill ratio.
-        //    Complex shapes (500+ points) with < 40% fill are self-intersecting artifacts.
-        const fillRatio = bboxArea > 0 ? polyArea / bboxArea : 1;
-        if (pts.length > 1000 && fillRatio < 0.40) continue;
-        if (pts.length > 200 && fillRatio < 0.10) continue;
+        // Only filter truly degenerate shapes — let Clipper handle self-intersections
+        if (bboxArea < 0.01) continue; // Skip near-zero area shapes
 
         // Use Clipper to simplify self-intersecting polygons into clean shapes
         let cleanPts = pts;
