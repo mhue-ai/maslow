@@ -80,10 +80,12 @@ export function SvgPreview2D() {
         if (polyArea < 1) continue;
         // 2. Extremely thin (aspect ratio > 20:1)
         if (w > 0 && h > 0 && (w / h > 20 || h / w > 20)) continue;
-        // 3. Low fill ratio (polygon area << bounding box = spiky/self-intersecting)
-        if (bboxArea > 0 && polyArea / bboxArea < 0.15) continue;
-        // 4. Excessive point count (compound paths that create visual artifacts)
-        if (pts.length > 2000) continue;
+        // 3. Complex self-intersecting paths: high point count + low fill ratio
+        //    Simple shapes (< 50 points) are fine at any fill ratio.
+        //    Complex shapes (500+ points) with < 40% fill are self-intersecting artifacts.
+        const fillRatio = bboxArea > 0 ? polyArea / bboxArea : 1;
+        if (pts.length > 500 && fillRatio < 0.40) continue;
+        if (pts.length > 100 && fillRatio < 0.10) continue;
 
         // Convert to SVG polygon points string
         const pointsStr = pts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
