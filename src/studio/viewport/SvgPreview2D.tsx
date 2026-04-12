@@ -36,6 +36,20 @@ export function SvgPreview2D() {
     setSvgDoc(enhanceSvg(svgText, shapeLevels, selectedPathId, profileCutId, toolConfig.bitDiameter, material, shapeRegistry));
   }, [svgText, shapeLevels, selectedPathId, profileCutId, toolConfig.bitDiameter, material, shapeRegistry]);
 
+  // After SVG renders, detect ring shapes and create store entries so they appear in sidebar
+  useEffect(() => {
+    if (!svgContainerRef.current) return;
+    const svg = svgContainerRef.current.querySelector('svg');
+    if (!svg) return;
+    const rings = svg.querySelectorAll('[data-shape-id^="ring"]');
+    rings.forEach((r) => {
+      const id = (r as HTMLElement).dataset.shapeId;
+      if (id && !shapeLevels.has(id)) {
+        setShapeLevel(id, 0); // Pre-create at face level
+      }
+    });
+  }, [svgDoc]); // Run after SVG doc updates
+
   const STEP_MM = 2; // Each click deepens by 2mm
 
   // Step a shape deeper: 0 → 2 → 4 → ... → thickness → 0
@@ -238,8 +252,12 @@ export function SvgPreview2D() {
         >
           <div
             style={{
-              width: '100%',
-              height: '100%',
+              // Inset SVG by edge clearance so design fits within the safe area
+              position: 'absolute',
+              left: `${(toolConfig.edgeClearance / material.width * 100).toFixed(2)}%`,
+              top: `${(toolConfig.edgeClearance / material.height * 100).toFixed(2)}%`,
+              width: `${(100 - 2 * toolConfig.edgeClearance / material.width * 100).toFixed(2)}%`,
+              height: `${(100 - 2 * toolConfig.edgeClearance / material.height * 100).toFixed(2)}%`,
               transform: `rotate(${svgTransformOverride.rotation}deg) scaleX(${svgTransformOverride.mirrorX ? -1 : 1}) scaleY(${svgTransformOverride.mirrorY ? -1 : 1})`,
             }}
             dangerouslySetInnerHTML={svgDoc ? { __html: svgDoc } : undefined}
