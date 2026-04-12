@@ -91,15 +91,16 @@ export function SvgPreview2D() {
         fill = `rgb(${grey},${grey},${grey})`;
         stroke = `rgb(${Math.max(0, grey - 60)},${Math.max(0, grey - 60)},${Math.max(0, grey - 60)})`;
       } else {
-        // Face level: white fill, dark outline
-        fill = '#ffffff';
-        stroke = '#555555';
+        // Face level: transparent fill (outline only on material background)
+        // Shapes only show fill when they have depth assigned
+        fill = 'none';
+        stroke = '#333333';
       }
 
-      // Override original fill/stroke — normalizer already inlined CSS so this works
+      // Override original fill/stroke — normalizer already inlined CSS
       el.setAttribute('fill', fill);
       el.setAttribute('stroke', stroke);
-      el.setAttribute('stroke-width', '0.5');
+      el.setAttribute('stroke-width', '0.3');
 
       const styles: string[] = ['cursor: crosshair'];
 
