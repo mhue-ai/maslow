@@ -9,36 +9,30 @@ export interface ConvertedPath {
 }
 
 /**
- * Convert parsed SVG into Three.js Shapes, using the shape registry
- * for stable IDs that match between the 2D preview and the store.
- *
- * Only creates shapes for non-text registry entries that SVGLoader
- * was able to parse.
+ * Convert parsed SVG into Three.js Shapes using the shape registry.
+ * After normalization, registry entries match SVGLoader paths sequentially.
  */
 export function svgToShapes(parsed: ParsedSvg): ConvertedPath[] {
   const paths: ConvertedPath[] = [];
 
   for (const entry of parsed.shapeRegistry) {
-    // Skip text elements — can't be CNC-machined
     if (entry.isText) continue;
-
-    // Skip entries that SVGLoader didn't parse
     if (entry.svgLoaderIndex === null) continue;
 
     const shapePath = parsed.result.paths[entry.svgLoaderIndex];
     if (!shapePath) continue;
 
-    const style = shapePath.userData?.style || {};
-    const hasFill = style.fill !== undefined && style.fill !== 'none' && style.fill !== '';
     const color = shapePath.color?.getHexString() ?? '888888';
     let shapes: Shape[] = [];
 
-    // Try to create filled shapes
+    // Try filled shapes first
+    const style = shapePath.userData?.style || {};
+    const hasFill = style.fill !== undefined && style.fill !== 'none' && style.fill !== '';
     if (hasFill) {
       shapes = SVGLoader.createShapes(shapePath);
     }
 
-    // If no filled shapes, try from stroked subpaths (closed outlines)
+    // If no filled shapes, try from closed subpaths
     if (shapes.length === 0 && shapePath.subPaths.length > 0) {
       for (const subPath of shapePath.subPaths) {
         const points = subPath.getPoints();
@@ -54,7 +48,7 @@ export function svgToShapes(parsed: ParsedSvg): ConvertedPath[] {
       }
     }
 
-    // Fallback: try createShapes regardless
+    // Fallback
     if (shapes.length === 0) {
       const fallback = SVGLoader.createShapes(shapePath);
       if (fallback.length > 0) shapes = fallback;
@@ -64,7 +58,7 @@ export function svgToShapes(parsed: ParsedSvg): ConvertedPath[] {
 
     paths.push({
       data: {
-        id: entry.id,    // Use registry ID (stable, matches 2D preview)
+        id: entry.id,
         name: entry.name,
         color: `#${color}`,
       },

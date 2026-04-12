@@ -368,61 +368,42 @@ function enhanceSvg(
     const styles: string[] = ['cursor: crosshair'];
     const filters: string[] = [];
 
-    // Determine the EFFECTIVE fill — check both attribute and inline style
-    // Fusion 360 SVGs use fill="none" attribute but style="fill:#color" in CSS
-    const attrFill = el.getAttribute('fill');
-    const styleFill = (el as HTMLElement).style?.fill;
-    const rawStyleAttr = el.getAttribute('style') ?? '';
-    const styleMatch = rawStyleAttr.match(/fill\s*:\s*([^;]+)/);
-    const cssFill = styleFill || (styleMatch ? styleMatch[1].trim() : null);
-    const effectiveFill = (cssFill && cssFill !== 'none') ? cssFill
-                        : (attrFill && attrFill !== 'none') ? attrFill
-                        : null;
-    const isFilled = !!effectiveFill;
+    // After normalization, getAttribute('fill') is reliable — no CSS workarounds needed
+    const fill = el.getAttribute('fill');
+    const isFilled = fill !== null && fill !== 'none' && fill !== '';
+    const stroke = el.getAttribute('stroke');
+    const hasStroke = stroke !== null && stroke !== 'none' && stroke !== '';
 
-    // Scale strokes to represent bit kerf width
-    const attrStroke = el.getAttribute('stroke');
-    const strokeMatch = rawStyleAttr.match(/stroke\s*:\s*([^;]+)/);
-    const effectiveStroke = (strokeMatch ? strokeMatch[1].trim() : attrStroke);
-    const hasStroke = effectiveStroke && effectiveStroke !== 'none';
     if (hasStroke) {
       styles.push(`stroke-width: ${bitStrokeWidth.toFixed(2)}`);
       styles.push('stroke-linecap: round');
       styles.push('stroke-linejoin: round');
     }
 
-    // Depth shading in GREYSCALE
+    // Depth shading in greyscale
     if (isProfileCut) {
       if (hasStroke) {
         el.setAttribute('stroke', '#ff8800');
         styles.push(`stroke-dasharray: ${(bitStrokeWidth * 2).toFixed(1)} ${bitStrokeWidth.toFixed(1)}`);
       }
       el.setAttribute('fill', '#1a1a1a');
-      // Clear inline style fill so our attribute takes effect
-      if (styleMatch) el.setAttribute('style', rawStyleAttr.replace(/fill\s*:[^;]+;?/g, ''));
       filters.push('drop-shadow(0 0 4px #ff8800)');
     } else if (level <= 0) {
       if (!isFilled) {
-        // Truly outline-only: near-invisible fill for click detection
         el.setAttribute('fill', 'rgba(255,255,255,0.01)');
         if (hasStroke) el.setAttribute('stroke', '#aaaaaa');
       } else {
-        // Filled element at face: white
         el.setAttribute('fill', '#ffffff');
         if (hasStroke) el.setAttribute('stroke', '#999999');
       }
-      // Clear inline style fill so our attribute takes effect
-      if (styleMatch) el.setAttribute('style', rawStyleAttr.replace(/fill\s*:[^;]+;?/g, ''));
       filters.push('drop-shadow(1px 2px 3px rgba(0,0,0,0.5))');
     } else if (level >= material.thickness) {
       el.setAttribute('fill', '#111111');
       if (hasStroke) el.setAttribute('stroke', '#333333');
-      if (styleMatch) el.setAttribute('style', rawStyleAttr.replace(/fill\s*:[^;]+;?/g, ''));
     } else {
       const grey = Math.round(240 - depthRatio * 200);
       el.setAttribute('fill', `rgb(${grey}, ${grey}, ${grey})`);
       if (hasStroke) el.setAttribute('stroke', `rgb(${Math.max(0, grey - 50)}, ${Math.max(0, grey - 50)}, ${Math.max(0, grey - 50)})`);
-      if (styleMatch) el.setAttribute('style', rawStyleAttr.replace(/fill\s*:[^;]+;?/g, ''));
     }
 
     // Selection highlight

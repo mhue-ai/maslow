@@ -45,7 +45,7 @@ export function SvgImportPanel() {
       setShapeRegistry(parsed.shapeRegistry);  // Must be before setPaths
       setPaths(converted);
       setSvgBounds(parsed.viewBox);
-      setSvgText(text);
+      setSvgText(parsed.normalizedSvgText);  // Store normalized version for 2D preview
       setFileName(file.name);
     } catch (err) {
       setWarning(`Failed to parse SVG: ${err instanceof Error ? err.message : String(err)}`);
