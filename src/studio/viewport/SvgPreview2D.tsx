@@ -48,6 +48,25 @@ export function SvgPreview2D() {
     svg.setAttribute('width', '100%');
     svg.setAttribute('height', '100%');
 
+    // Inject a global style block that strips ALL original colors with !important
+    // This guarantees our overrides win over any inline styles, CSS classes, etc.
+    const styleBlock = doc.createElementNS('http://www.w3.org/2000/svg', 'style');
+    styleBlock.textContent = `
+      path, polygon, polyline, rect, circle, ellipse, line {
+        fill: none !important;
+        stroke: #333333 !important;
+        stroke-width: 0.3 !important;
+        fill-opacity: 1 !important;
+        stroke-opacity: 1 !important;
+      }
+      text {
+        fill: #333333 !important;
+        stroke: none !important;
+        pointer-events: none !important;
+      }
+    `;
+    svg.insertBefore(styleBlock, svg.firstChild);
+
     // Walk through registry and assign depth styling to each element
     const allElements = svg.querySelectorAll('path, polygon, polyline, rect, circle, ellipse, line, text');
     let regIdx = 0;
@@ -113,9 +132,9 @@ export function SvgPreview2D() {
 
       const styles: string[] = [
         'cursor: crosshair',
-        `fill: ${fill}`,
-        `stroke: ${stroke}`,
-        'stroke-width: 0.3',
+        `fill: ${fill} !important`,
+        `stroke: ${stroke} !important`,
+        'stroke-width: 0.3 !important',
       ];
 
       if (isProfile) {
