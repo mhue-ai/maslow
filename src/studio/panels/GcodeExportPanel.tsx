@@ -59,7 +59,7 @@ export function GcodeExportPanel() {
       setResult(gen);
       setGcode(gen.lines.join('\n'));
 
-      const boundsResult = checkBounds(gen.lines, material, toolConfig.workOrigin);
+      const boundsResult = checkBounds(gen.lines, material, toolConfig.workOrigin, toolConfig.edgeClearance);
       setBounds(boundsResult);
     } catch (err) {
       setError(`Generation failed: ${err instanceof Error ? err.message : String(err)}`);

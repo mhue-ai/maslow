@@ -244,17 +244,40 @@ export function SvgPreview2D() {
             }}
             dangerouslySetInnerHTML={svgDoc ? { __html: svgDoc } : undefined}
           />
-          {/* Snap lines: center cross + margin guides */}
-          <svg style={{
-            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-            pointerEvents: 'none', overflow: 'visible',
-          }}>
-            {/* Center crosshair */}
-            <line x1="50%" y1="0" x2="50%" y2="100%" stroke="#ff880044" strokeWidth="1" strokeDasharray="4 4" />
-            <line x1="0" y1="50%" x2="100%" y2="50%" stroke="#ff880044" strokeWidth="1" strokeDasharray="4 4" />
-            {/* Edge margin guides (1" / 25mm from edges) */}
-            <rect x="2%" y="2%" width="96%" height="96%" fill="none" stroke="#ffffff11" strokeWidth="0.5" strokeDasharray="2 6" />
-          </svg>
+          {/* Snap lines + edge clearance zone */}
+          {(() => {
+            const ec = toolConfig.edgeClearance;
+            const pctX = (ec / material.width * 100).toFixed(2);
+            const pctY = (ec / material.height * 100).toFixed(2);
+            const innerW = (100 - 2 * ec / material.width * 100).toFixed(2);
+            const innerH = (100 - 2 * ec / material.height * 100).toFixed(2);
+            return (
+              <svg style={{
+                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                pointerEvents: 'none', overflow: 'visible',
+              }}>
+                {/* Center crosshair */}
+                <line x1="50%" y1="0" x2="50%" y2="100%" stroke="#ff880044" strokeWidth="1" strokeDasharray="4 4" />
+                <line x1="0" y1="50%" x2="100%" y2="50%" stroke="#ff880044" strokeWidth="1" strokeDasharray="4 4" />
+                {/* Edge clearance zone — red dashed border showing unsafe area */}
+                <rect
+                  x={`${pctX}%`} y={`${pctY}%`}
+                  width={`${innerW}%`} height={`${innerH}%`}
+                  fill="none" stroke="#ff444466" strokeWidth="1.5" strokeDasharray="6 4"
+                />
+                {/* Shade the unsafe edge zone with a subtle red overlay */}
+                <rect x="0" y="0" width="100%" height={`${pctY}%`} fill="#ff000008" />
+                <rect x="0" y={`${parseFloat(pctY) + parseFloat(innerH)}%`} width="100%" height={`${pctY}%`} fill="#ff000008" />
+                <rect x="0" y={`${pctY}%`} width={`${pctX}%`} height={`${innerH}%`} fill="#ff000008" />
+                <rect x={`${parseFloat(pctX) + parseFloat(innerW)}%`} y={`${pctY}%`} width={`${pctX}%`} height={`${innerH}%`} fill="#ff000008" />
+                {/* Edge clearance label */}
+                <text x={`${parseFloat(pctX) + 1}%`} y={`${parseFloat(pctY) + 4}%`}
+                  fill="#ff444488" fontSize="8" fontFamily="sans-serif">
+                  {ec}mm clearance
+                </text>
+              </svg>
+            );
+          })()}
           <div style={{
             position: 'absolute', bottom: -20, left: 0, right: 0,
             textAlign: 'center', fontSize: 10, color: '#666',

@@ -54,6 +54,7 @@ export interface ToolConfig {
   tabHeight: number;       // mm
   tabCount: number;        // per path
   workOrigin: WorkOrigin;
+  edgeClearance: number;  // mm from sheet edges — Maslow accuracy degrades at edges
 }
 
 export const DEFAULT_TOOL_CONFIG: ToolConfig = {
@@ -68,6 +69,7 @@ export const DEFAULT_TOOL_CONFIG: ToolConfig = {
   tabHeight: 9.5,
   tabCount: 4,
   workOrigin: 'center',
+  edgeClearance: 50, // 2" / 50mm — Maslow recommended minimum from sheet edges
 };
 
 export const DEFAULT_MATERIAL: Material = {

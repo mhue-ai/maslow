@@ -14,12 +14,14 @@ const MASLOW_MAX_Y = 2440; // 8 feet in mm
 
 /**
  * Scan G-code for out-of-bounds moves.
- * Checks against material dimensions and Maslow's max cutting envelope.
+ * Checks against material dimensions WITH edge clearance applied,
+ * and against Maslow's max cutting envelope.
  */
 export function checkBounds(
   lines: string[],
   material: Material,
-  workOrigin: WorkOrigin
+  workOrigin: WorkOrigin,
+  edgeClearance: number = 50
 ): BoundsResult {
   const warnings: string[] = [];
   let minX = Infinity, maxX = -Infinity;
@@ -47,33 +49,33 @@ export function checkBounds(
     return { inBounds: true, warnings: [], minX: 0, maxX: 0, minY: 0, maxY: 0 };
   }
 
-  // Compute material bounds based on work origin
-  let matMinX: number, matMaxX: number, matMinY: number, matMaxY: number;
+  // Compute safe cutting area = material minus edge clearance
+  const ec = edgeClearance;
+  let safeMinX: number, safeMaxX: number, safeMinY: number, safeMaxY: number;
 
   if (workOrigin === 'center') {
-    matMinX = -material.width / 2;
-    matMaxX = material.width / 2;
-    matMinY = -material.height / 2;
-    matMaxY = material.height / 2;
+    safeMinX = -material.width / 2 + ec;
+    safeMaxX = material.width / 2 - ec;
+    safeMinY = -material.height / 2 + ec;
+    safeMaxY = material.height / 2 - ec;
   } else if (workOrigin === 'bottom-left') {
-    matMinX = 0;
-    matMaxX = material.width;
-    matMinY = 0;
-    matMaxY = material.height;
+    safeMinX = ec;
+    safeMaxX = material.width - ec;
+    safeMinY = ec;
+    safeMaxY = material.height - ec;
   } else {
-    // top-left
-    matMinX = 0;
-    matMaxX = material.width;
-    matMinY = -material.height;
-    matMaxY = 0;
+    safeMinX = ec;
+    safeMaxX = material.width - ec;
+    safeMinY = -material.height + ec;
+    safeMaxY = -ec;
   }
 
-  // Check against material
-  if (minX < matMinX - 0.5 || maxX > matMaxX + 0.5 ||
-      minY < matMinY - 0.5 || maxY > matMaxY + 0.5) {
+  // Check against safe area (material minus edge clearance)
+  if (minX < safeMinX - 0.5 || maxX > safeMaxX + 0.5 ||
+      minY < safeMinY - 0.5 || maxY > safeMaxY + 0.5) {
     warnings.push(
-      `Toolpath exceeds material: X[${minX.toFixed(1)}..${maxX.toFixed(1)}] Y[${minY.toFixed(1)}..${maxY.toFixed(1)}] ` +
-      `vs material X[${matMinX.toFixed(0)}..${matMaxX.toFixed(0)}] Y[${matMinY.toFixed(0)}..${matMaxY.toFixed(0)}]`
+      `Toolpath enters edge clearance zone (${ec}mm from edges). ` +
+      `Safe area: X[${safeMinX.toFixed(0)}..${safeMaxX.toFixed(0)}] Y[${safeMinY.toFixed(0)}..${safeMaxY.toFixed(0)}]`
     );
   }
 

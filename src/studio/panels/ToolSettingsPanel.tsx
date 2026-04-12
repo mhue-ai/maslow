@@ -80,6 +80,13 @@ export function ToolSettingsPanel() {
         <span className="unit">mm</span>
       </label>
 
+      <label data-tip="Minimum distance from sheet edges. Maslow accuracy degrades near edges and the sled can fall off. 50mm (2&quot;) is the recommended minimum. Shown as a red dashed border on the material.">
+        Edge clearance
+        <input type="number" value={config.edgeClearance} min={10} max={150} step={5}
+          onChange={(e) => setConfig({ edgeClearance: Number(e.target.value) })} />
+        <span className="unit">mm</span>
+      </label>
+
       <h3 data-tip="Small bridges of material left during through-cuts to keep the piece from falling. Cut with a hand saw after CNC finishes.">
         Tabs (Through-cuts)
       </h3>
