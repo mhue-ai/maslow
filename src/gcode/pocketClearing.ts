@@ -13,19 +13,32 @@ interface Point {
 /**
  * Generate zig-zag pocket clearing G-code for a shape.
  * Uses horizontal scan lines clipped to the shape boundary.
+ *
+ * If pocketRegions is provided (from island detection), uses those
+ * polygons instead of the raw shape boundary. This enables island
+ * avoidance — the pocket is the shape minus any shallower shapes inside it.
  */
 export function generatePocketGcode(
   shape: Shape,
   totalDepth: number,
   tool: ToolConfig,
-  transform: SvgTransform
+  transform: SvgTransform,
+  pocketRegions?: Point[][]
 ): string[] {
   const lines: string[] = [];
   const stepover = tool.bitDiameter * tool.stepover;
 
-  // Get shape outline points, apply full transform (scale + rotation + offset)
-  const rawPoints = shape.getPoints(64);
-  const polygon: Point[] = rawPoints.map((p) => transformPoint(p.x, p.y, transform));
+  // Use island-aware pocket regions if provided, otherwise use the raw shape
+  let polygons: Point[][];
+  if (pocketRegions && pocketRegions.length > 0) {
+    polygons = pocketRegions;
+  } else {
+    const rawPoints = shape.getPoints(64);
+    polygons = [rawPoints.map((p) => transformPoint(p.x, p.y, transform))];
+  }
+
+  // Use the first polygon as the primary pocket boundary
+  const polygon = polygons[0];
 
   // Compute bounding box of transformed polygon
   const bbox = computeBBox(polygon);

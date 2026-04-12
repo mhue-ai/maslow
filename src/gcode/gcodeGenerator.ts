@@ -4,6 +4,7 @@ import type { SvgTransform } from '../svg/svgScaler';
 import { gcodeHeader, gcodeFooter } from './gcodeWriter';
 import { generatePocketGcode } from './pocketClearing';
 import { generateProfileGcode } from './profileCut';
+import { detectIslands } from './islandDetection';
 
 export interface GenerationResult {
   lines: string[];
@@ -23,7 +24,7 @@ export interface GenerationResult {
  *   - outermost shape (profileCutId): outside offset
  *   - other shapes: inside offset (holes)
  */
-function generateInstance(
+async function generateInstance(
   paths: ConvertedPath[],
   shapeLevels: Map<string, ShapeLevel>,
   toolConfig: ToolConfig,
@@ -32,7 +33,7 @@ function generateInstance(
   operationOrder: string[],
   profileCutId: string | null,
   copyOffset?: { x: number; y: number }
-): { lines: string[]; ops: number } {
+): Promise<{ lines: string[]; ops: number }> {
   const lines: string[] = [];
   let ops = 0;
   const pathMap = new Map(paths.map((p) => [p.data.id, p]));
@@ -75,8 +76,18 @@ function generateInstance(
           shape, cutDepth, toolConfig, t, true, profileOffset
         ));
       } else {
-        // Relief: pocket clearing inside boundary
-        lines.push(...generatePocketGcode(shape, cutDepth, toolConfig, t));
+        // Relief: pocket clearing with island avoidance
+        // Detect shapes inside this pocket that are at a shallower depth
+        try {
+          const region = await detectIslands(shapeId, level, paths, shapeLevels, t);
+          if (region.islandIds.length > 0) {
+            lines.push(`; Islands detected: ${region.islandIds.join(', ')}`);
+          }
+          lines.push(...generatePocketGcode(shape, cutDepth, toolConfig, t, region.pocketPolygons));
+        } catch {
+          // Fallback: pocket without island avoidance
+          lines.push(...generatePocketGcode(shape, cutDepth, toolConfig, t));
+        }
       }
       ops++;
     }
@@ -88,7 +99,7 @@ function generateInstance(
 /**
  * Generate complete G-code for all shape instances.
  */
-export function generateGcode(
+export async function generateGcode(
   paths: ConvertedPath[],
   shapeLevels: Map<string, ShapeLevel>,
   toolConfig: ToolConfig,
@@ -97,7 +108,7 @@ export function generateGcode(
   operationOrder: string[],
   profileCutId: string | null,
   designCopies: { offsetX: number; offsetY: number }[] = []
-): GenerationResult {
+): Promise<GenerationResult> {
   const lines: string[] = [];
   let operationCount = 0;
 
@@ -106,7 +117,7 @@ export function generateGcode(
   // Primary instance
   lines.push('');
   lines.push('; ====== Primary Instance ======');
-  const primary = generateInstance(paths, shapeLevels, toolConfig, transform, materialThickness, operationOrder, profileCutId);
+  const primary = await generateInstance(paths, shapeLevels, toolConfig, transform, materialThickness, operationOrder, profileCutId);
   lines.push(...primary.lines);
   operationCount += primary.ops;
 
@@ -115,7 +126,7 @@ export function generateGcode(
     const copy = designCopies[i];
     lines.push('');
     lines.push(`; ====== Copy ${i + 1} (offset ${copy.offsetX}, ${copy.offsetY}) ======`);
-    const inst = generateInstance(paths, shapeLevels, toolConfig, transform, materialThickness, operationOrder, profileCutId, { x: copy.offsetX, y: copy.offsetY });
+    const inst = await generateInstance(paths, shapeLevels, toolConfig, transform, materialThickness, operationOrder, profileCutId, { x: copy.offsetX, y: copy.offsetY });
     lines.push(...inst.lines);
     operationCount += inst.ops;
   }

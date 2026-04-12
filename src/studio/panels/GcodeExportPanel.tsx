@@ -32,7 +32,7 @@ export function GcodeExportPanel() {
     );
   }
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     setError(null);
     setBounds(null);
 
@@ -51,7 +51,7 @@ export function GcodeExportPanel() {
         svgBounds, material, toolConfig.workOrigin, svgTransformOverride, toolConfig.edgeClearance
       );
 
-      const gen = generateGcode(
+      const gen = await generateGcode(
         paths, shapeLevels, toolConfig, transform,
         material.thickness, operationOrder, profileCutId, designCopies
       );
