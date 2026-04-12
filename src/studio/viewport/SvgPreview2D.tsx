@@ -54,13 +54,13 @@ export function SvgPreview2D() {
     styleBlock.textContent = `
       path, polygon, polyline, rect, circle, ellipse, line {
         fill: none !important;
-        stroke: #333333 !important;
-        stroke-width: 0.3 !important;
+        stroke: #555555 !important;
+        stroke-width: 0.02 !important;
         fill-opacity: 1 !important;
         stroke-opacity: 1 !important;
       }
       text {
-        fill: #333333 !important;
+        fill: #555555 !important;
         stroke: none !important;
         pointer-events: none !important;
       }
@@ -125,7 +125,7 @@ export function SvgPreview2D() {
       // which overrides setAttribute('fill') if not also set in style.
       el.setAttribute('fill', fill);
       el.setAttribute('stroke', stroke);
-      el.setAttribute('stroke-width', '0.3');
+      el.setAttribute('stroke-width', '0.02');
       (el as HTMLElement).style.fill = fill;
       (el as HTMLElement).style.stroke = stroke;
       (el as HTMLElement).style.strokeWidth = '0.3';
@@ -134,7 +134,7 @@ export function SvgPreview2D() {
         'cursor: crosshair',
         `fill: ${fill} !important`,
         `stroke: ${stroke} !important`,
-        'stroke-width: 0.3 !important',
+        'stroke-width: 0.02 !important',
       ];
 
       if (isProfile) {
