@@ -22,12 +22,18 @@ export function DepthPanel() {
 
   const pathMap = new Map(paths.map((p) => [p.data.id, p]));
 
-  // Include ring shapes (virtual gap regions) that have been clicked/assigned
+  // Include ring shapes (virtual gap regions) — insert BEFORE the profile cut
   const ringIds = Array.from(shapeLevels.keys()).filter((id) => id.startsWith('ring-'));
 
-  const orderedIds = operationOrder.length > 0
-    ? [...operationOrder.filter((id) => !id.startsWith('ring-')), ...ringIds]
-    : [...paths.map((p) => p.data.id), ...ringIds];
+  const baseOrder = operationOrder.length > 0
+    ? operationOrder.filter((id) => !id.startsWith('ring-'))
+    : paths.map((p) => p.data.id);
+
+  // Insert rings before the profile cut (which must always be last)
+  const profileIdx = baseOrder.indexOf(profileCutId ?? '');
+  const orderedIds = profileIdx >= 0
+    ? [...baseOrder.slice(0, profileIdx), ...ringIds, ...baseOrder.slice(profileIdx)]
+    : [...baseOrder, ...ringIds];
 
   const thickness = material.thickness;
 
