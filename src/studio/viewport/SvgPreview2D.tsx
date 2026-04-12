@@ -368,47 +368,61 @@ function enhanceSvg(
     const styles: string[] = ['cursor: crosshair'];
     const filters: string[] = [];
 
+    // Determine the EFFECTIVE fill — check both attribute and inline style
+    // Fusion 360 SVGs use fill="none" attribute but style="fill:#color" in CSS
+    const attrFill = el.getAttribute('fill');
+    const styleFill = (el as HTMLElement).style?.fill;
+    const rawStyleAttr = el.getAttribute('style') ?? '';
+    const styleMatch = rawStyleAttr.match(/fill\s*:\s*([^;]+)/);
+    const cssFill = styleFill || (styleMatch ? styleMatch[1].trim() : null);
+    const effectiveFill = (cssFill && cssFill !== 'none') ? cssFill
+                        : (attrFill && attrFill !== 'none') ? attrFill
+                        : null;
+    const isFilled = !!effectiveFill;
+
     // Scale strokes to represent bit kerf width
-    const hasStroke = el.getAttribute('stroke') && el.getAttribute('stroke') !== 'none';
+    const attrStroke = el.getAttribute('stroke');
+    const strokeMatch = rawStyleAttr.match(/stroke\s*:\s*([^;]+)/);
+    const effectiveStroke = (strokeMatch ? strokeMatch[1].trim() : attrStroke);
+    const hasStroke = effectiveStroke && effectiveStroke !== 'none';
     if (hasStroke) {
       styles.push(`stroke-width: ${bitStrokeWidth.toFixed(2)}`);
       styles.push('stroke-linecap: round');
       styles.push('stroke-linejoin: round');
     }
 
-    // Depth shading in GREYSCALE — material background stays wood color,
-    // all shape depth indicators use shades of grey.
-    // Face = white, shallow = light grey, deep = dark grey, through = near-black.
+    // Depth shading in GREYSCALE
     if (isProfileCut) {
-      // Profile cut — orange dashed outline, very dark grey fill
       if (hasStroke) {
         el.setAttribute('stroke', '#ff8800');
         styles.push(`stroke-dasharray: ${(bitStrokeWidth * 2).toFixed(1)} ${bitStrokeWidth.toFixed(1)}`);
       }
       el.setAttribute('fill', '#1a1a1a');
+      // Clear inline style fill so our attribute takes effect
+      if (styleMatch) el.setAttribute('style', rawStyleAttr.replace(/fill\s*:[^;]+;?/g, ''));
       filters.push('drop-shadow(0 0 4px #ff8800)');
     } else if (level <= 0) {
-      // Face (level 0) — white/bright, clearly raised
-      const currentFill = el.getAttribute('fill');
-      if (currentFill === 'none' || !currentFill) {
-        // Outline-only: near-invisible fill for CLICK detection, visible grey stroke
+      if (!isFilled) {
+        // Truly outline-only: near-invisible fill for click detection
         el.setAttribute('fill', 'rgba(255,255,255,0.01)');
         if (hasStroke) el.setAttribute('stroke', '#aaaaaa');
       } else {
-        // Filled element: white
+        // Filled element at face: white
         el.setAttribute('fill', '#ffffff');
         if (hasStroke) el.setAttribute('stroke', '#999999');
       }
+      // Clear inline style fill so our attribute takes effect
+      if (styleMatch) el.setAttribute('style', rawStyleAttr.replace(/fill\s*:[^;]+;?/g, ''));
       filters.push('drop-shadow(1px 2px 3px rgba(0,0,0,0.5))');
     } else if (level >= material.thickness) {
-      // Through-cut — near-black
       el.setAttribute('fill', '#111111');
       if (hasStroke) el.setAttribute('stroke', '#333333');
+      if (styleMatch) el.setAttribute('style', rawStyleAttr.replace(/fill\s*:[^;]+;?/g, ''));
     } else {
-      // Relief — grey proportional to depth: white(0) → dark grey(thickness)
-      const grey = Math.round(240 - depthRatio * 200); // 240 (light) to 40 (dark)
+      const grey = Math.round(240 - depthRatio * 200);
       el.setAttribute('fill', `rgb(${grey}, ${grey}, ${grey})`);
       if (hasStroke) el.setAttribute('stroke', `rgb(${Math.max(0, grey - 50)}, ${Math.max(0, grey - 50)}, ${Math.max(0, grey - 50)})`);
+      if (styleMatch) el.setAttribute('style', rawStyleAttr.replace(/fill\s*:[^;]+;?/g, ''));
     }
 
     // Selection highlight
@@ -441,9 +455,10 @@ function createRingShapes(
   selectedPathId: string | null,
   material: Material
 ): void {
-  // Collect all closed polygon elements with their points and bounding boxes
+  // Collect all closed shape elements (polygons AND closed paths) with bounding boxes
   const closedShapes: { el: Element; id: string; points: string; bbox: DOMRect; area: number }[] = [];
 
+  // Include polygons
   const polygons = svg.querySelectorAll('polygon[data-shape-id]');
   polygons.forEach((el) => {
     const id = (el as HTMLElement).dataset.shapeId;
@@ -453,6 +468,25 @@ function createRingShapes(
     try {
       const bbox = (el as SVGGraphicsElement).getBBox();
       closedShapes.push({ el, id, points, bbox, area: bbox.width * bbox.height });
+    } catch { /* skip */ }
+  });
+
+  // Also include closed <path> elements (e.g. from Fusion 360)
+  const paths = svg.querySelectorAll('path[data-shape-id]');
+  paths.forEach((el) => {
+    const id = (el as HTMLElement).dataset.shapeId;
+    if (!id) return;
+    const d = el.getAttribute('d');
+    if (!d || !/z\s*$/i.test(d.trim())) return; // Must be a closed path
+    try {
+      const bbox = (el as SVGGraphicsElement).getBBox();
+      // Only include shapes with meaningful area (skip tiny lines/decorations)
+      const area = bbox.width * bbox.height;
+      if (area < 1) return;
+      // Convert path d to a simplified polygon points string for ring creation
+      // Use the bounding box corners as a rough polygon (actual path is more complex)
+      const pts = `${bbox.x},${bbox.y} ${bbox.x + bbox.width},${bbox.y} ${bbox.x + bbox.width},${bbox.y + bbox.height} ${bbox.x},${bbox.y + bbox.height}`;
+      closedShapes.push({ el, id, points: pts, bbox, area });
     } catch { /* skip */ }
   });
 
