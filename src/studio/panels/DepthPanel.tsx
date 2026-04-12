@@ -21,9 +21,13 @@ export function DepthPanel() {
   }
 
   const pathMap = new Map(paths.map((p) => [p.data.id, p]));
+
+  // Include ring shapes (virtual gap regions) that have been clicked/assigned
+  const ringIds = Array.from(shapeLevels.keys()).filter((id) => id.startsWith('ring-'));
+
   const orderedIds = operationOrder.length > 0
-    ? operationOrder
-    : paths.map((p) => p.data.id);
+    ? [...operationOrder.filter((id) => !id.startsWith('ring-')), ...ringIds]
+    : [...paths.map((p) => p.data.id), ...ringIds];
 
   const thickness = material.thickness;
 
@@ -63,7 +67,8 @@ export function DepthPanel() {
       <div className="path-list">
         {orderedIds.map((id, idx) => {
           const path = pathMap.get(id);
-          if (!path) return null;
+          const isRing = id.startsWith('ring-');
+          const shapeName = path?.data.name ?? (isRing ? `Border Ring ${id.replace('ring-', '')}` : id);
           const info = getInfo(id);
           const isSelected = selectedPathId === id;
           const isProfile = id === profileCutId;
@@ -94,7 +99,7 @@ export function DepthPanel() {
               }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {isProfile ? '✂ ' : ''}{path.data.name}
+                  {isProfile ? '✂ ' : ''}{isRing ? '◇ ' : ''}{shapeName}
                 </div>
                 <div style={{ fontSize: 9, color: '#888' }}>
                   {info.label}
@@ -108,7 +113,7 @@ export function DepthPanel() {
       {/* Selected shape controls */}
       {selectedPathId && (
         <div style={{ marginTop: 12 }}>
-          <h3>{pathMap.get(selectedPathId)?.data.name ?? 'Shape'}</h3>
+          <h3>{pathMap.get(selectedPathId)?.data.name ?? (selectedPathId.startsWith('ring-') ? `Border Ring` : 'Shape')}</h3>
 
           <label>
             Level

@@ -382,5 +382,124 @@ function enhanceSvg(
     el.setAttribute('style', styles.join('; '));
   });
 
+  // Auto-detect gaps between nested closed polygons and create virtual ring shapes
+  createRingShapes(svg, shapeLevels, selectedPathId, material);
+
   return new XMLSerializer().serializeToString(svg);
+}
+
+/**
+ * Find nested closed polygons and create virtual "ring" shapes for the
+ * gaps between them. These are the implied regions that don't exist as
+ * SVG elements but are visible as dark areas between borders.
+ */
+function createRingShapes(
+  svg: SVGSVGElement,
+  shapeLevels: Map<string, ShapeLevel>,
+  selectedPathId: string | null,
+  material: Material
+): void {
+  // Collect all closed polygon elements with their points and bounding boxes
+  const closedShapes: { el: Element; id: string; points: string; bbox: DOMRect; area: number }[] = [];
+
+  const polygons = svg.querySelectorAll('polygon[data-shape-id]');
+  polygons.forEach((el) => {
+    const id = (el as HTMLElement).dataset.shapeId;
+    if (!id) return;
+    const points = el.getAttribute('points');
+    if (!points) return;
+    try {
+      const bbox = (el as SVGGraphicsElement).getBBox();
+      closedShapes.push({ el, id, points, bbox, area: bbox.width * bbox.height });
+    } catch { /* skip */ }
+  });
+
+  // Sort by area, largest first
+  closedShapes.sort((a, b) => b.area - a.area);
+
+  // For each pair where smaller is inside larger, create a ring
+  const usedInners = new Set<string>();
+  let ringIndex = 0;
+
+  for (let i = 0; i < closedShapes.length; i++) {
+    const outer = closedShapes[i];
+    for (let j = i + 1; j < closedShapes.length; j++) {
+      const inner = closedShapes[j];
+      if (usedInners.has(inner.id)) continue;
+
+      // Check if inner bbox is inside outer bbox
+      if (inner.bbox.x >= outer.bbox.x &&
+          inner.bbox.y >= outer.bbox.y &&
+          inner.bbox.x + inner.bbox.width <= outer.bbox.x + outer.bbox.width &&
+          inner.bbox.y + inner.bbox.height <= outer.bbox.y + outer.bbox.height) {
+
+        // Create a ring shape: compound path with outer CW and inner CCW
+        const ringId = `ring-${ringIndex++}`;
+        const outerD = polygonPointsToPath(outer.points, false);
+        const innerD = polygonPointsToPath(inner.points, true); // reverse for hole
+
+        const ringPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        ringPath.setAttribute('d', outerD + ' ' + innerD);
+        ringPath.setAttribute('fill-rule', 'evenodd');
+        ringPath.setAttribute('data-shape-id', ringId);
+
+        // Style based on depth level
+        const level = shapeLevels.get(ringId)?.level ?? 0;
+        const isSelected = selectedPathId === ringId;
+        const depthRatio = Math.min(1, level / material.thickness);
+
+        let fill: string;
+        let stroke = 'none';
+        const styles: string[] = ['cursor: crosshair'];
+        const filters: string[] = [];
+
+        if (level <= 0) {
+          fill = '#c4a66a'; // Material color — the ring shows as wood background
+        } else if (level >= material.thickness) {
+          fill = '#111111';
+        } else {
+          const grey = Math.round(240 - depthRatio * 200);
+          fill = `rgb(${grey}, ${grey}, ${grey})`;
+        }
+
+        if (isSelected) {
+          filters.push('drop-shadow(0 0 6px #ffffff) drop-shadow(0 0 12px #4488ff)');
+        }
+
+        if (filters.length > 0) {
+          styles.push(`filter: ${filters.join(' ')}`);
+        }
+
+        ringPath.setAttribute('fill', fill);
+        ringPath.setAttribute('stroke', stroke);
+        ringPath.setAttribute('style', styles.join('; '));
+
+        // Insert BEFORE the outer element so it renders between the two polygons
+        outer.el.parentNode?.insertBefore(ringPath, outer.el.nextSibling);
+
+        usedInners.add(inner.id);
+      }
+    }
+  }
+}
+
+/**
+ * Convert SVG polygon points to path d attribute.
+ * If reverse=true, reverses the point order (for creating holes in compound paths).
+ */
+function polygonPointsToPath(points: string, reverse: boolean): string {
+  const pairs = points.trim().split(/\s+/).map((p) => {
+    const [x, y] = p.split(',').map(Number);
+    return { x, y };
+  });
+
+  if (reverse) pairs.reverse();
+  if (pairs.length === 0) return '';
+
+  let d = `M${pairs[0].x},${pairs[0].y}`;
+  for (let i = 1; i < pairs.length; i++) {
+    d += ` L${pairs[i].x},${pairs[i].y}`;
+  }
+  d += ' Z';
+  return d;
 }
