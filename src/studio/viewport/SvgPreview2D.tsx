@@ -38,13 +38,14 @@ export function SvgPreview2D() {
   const STEP_MM = 2; // Each click deepens by 2mm
 
   // Step a shape deeper: 0 → 2 → 4 → ... → thickness → 0
+  // Profile cut shape is locked — can't be changed by clicking
   const stepDeeper = useCallback((shapeId: string) => {
+    if (shapeId === profileCutId) return; // Profile cut is locked
     const current = shapeLevels.get(shapeId)?.level ?? 0;
     const thickness = material.thickness;
     const next = current + STEP_MM;
-    // If past thickness, wrap back to 0 (face)
     setShapeLevel(shapeId, next > thickness ? 0 : next);
-  }, [shapeLevels, setShapeLevel, material.thickness]);
+  }, [shapeLevels, setShapeLevel, material.thickness, profileCutId]);
 
   // Paint-bucket click handler
   const handleClick = useCallback((e: React.MouseEvent) => {
@@ -214,6 +215,17 @@ export function SvgPreview2D() {
             }}
             dangerouslySetInnerHTML={svgDoc ? { __html: svgDoc } : undefined}
           />
+          {/* Snap lines: center cross + margin guides */}
+          <svg style={{
+            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+            pointerEvents: 'none', overflow: 'visible',
+          }}>
+            {/* Center crosshair */}
+            <line x1="50%" y1="0" x2="50%" y2="100%" stroke="#ff880044" strokeWidth="1" strokeDasharray="4 4" />
+            <line x1="0" y1="50%" x2="100%" y2="50%" stroke="#ff880044" strokeWidth="1" strokeDasharray="4 4" />
+            {/* Edge margin guides (1" / 25mm from edges) */}
+            <rect x="2%" y="2%" width="96%" height="96%" fill="none" stroke="#ffffff11" strokeWidth="0.5" strokeDasharray="2 6" />
+          </svg>
           <div style={{
             position: 'absolute', bottom: -20, left: 0, right: 0,
             textAlign: 'center', fontSize: 10, color: '#666',
@@ -306,13 +318,14 @@ function enhanceSvg(
       el.setAttribute('fill', '#1a1a1a');
       filters.push('drop-shadow(0 0 4px #ff8800)');
     } else if (level <= 0) {
-      // Face (level 0) — white, clearly raised
+      // Face (level 0) — white/bright, clearly raised
       const currentFill = el.getAttribute('fill');
       if (currentFill === 'none' || !currentFill) {
-        // Outline-only: light grey fill for hit detection
-        el.setAttribute('fill', '#e0e0e0');
-        styles.push('opacity: 0.1');
+        // Outline-only: transparent fill for hit detection, visible grey stroke
+        el.setAttribute('fill', 'none');
+        if (hasStroke) el.setAttribute('stroke', '#aaaaaa');
       } else {
+        // Filled element: white
         el.setAttribute('fill', '#ffffff');
         if (hasStroke) el.setAttribute('stroke', '#999999');
       }
