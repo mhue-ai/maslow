@@ -58,7 +58,8 @@ export function SvgPreview2D() {
       if (!entry) return;
 
       if (entry.isText) {
-        // Text: not clickable, show at face level
+        el.setAttribute('fill', '#ffffff');
+        el.setAttribute('stroke', 'none');
         el.setAttribute('style', 'pointer-events: none;');
         return;
       }
@@ -70,34 +71,51 @@ export function SvgPreview2D() {
       const isProfile = entry.id === profileCutId;
       const thickness = material.thickness;
 
-      // Depth indication via CSS brightness filter
-      // face = full brightness, deeper = darker, through = very dark
-      let brightness = 1.0;
+      // CNC monochrome scheme: strip original colors, use depth-based greyscale
+      // Face = white fill + dark stroke (clean line drawing)
+      // Deeper = progressively darker fill
+      // Through = near-black
+      let fill: string;
+      let stroke = '#444444';
+      const filters: string[] = [];
+
       if (isProfile) {
-        brightness = 0.15;
+        fill = '#1a1a1a';
+        stroke = '#ff8800';
       } else if (level >= thickness) {
-        brightness = 0.1;
+        fill = '#111111';
+        stroke = '#333333';
       } else if (level > 0) {
-        brightness = 1.0 - (level / thickness) * 0.8; // 1.0 → 0.2
+        const ratio = Math.min(1, level / thickness);
+        const grey = Math.round(240 - ratio * 200);
+        fill = `rgb(${grey},${grey},${grey})`;
+        stroke = `rgb(${Math.max(0, grey - 60)},${Math.max(0, grey - 60)},${Math.max(0, grey - 60)})`;
+      } else {
+        // Face level: white fill, dark outline
+        fill = '#ffffff';
+        stroke = '#555555';
       }
 
-      const styles: string[] = [
-        'cursor: crosshair',
-        `filter: brightness(${brightness.toFixed(2)})`,
-      ];
+      // Override original fill/stroke — normalizer already inlined CSS so this works
+      el.setAttribute('fill', fill);
+      el.setAttribute('stroke', stroke);
+      el.setAttribute('stroke-width', '0.5');
 
-      // Profile cut: orange dashed outline
+      const styles: string[] = ['cursor: crosshair'];
+
       if (isProfile) {
-        styles.push('stroke: #ff8800 !important');
         styles.push('stroke-dasharray: 8 4');
-        styles.push('stroke-width: 2');
+        styles.push('stroke-width: 1.5');
       }
 
-      // Selection highlight
       if (isSelected) {
-        styles.push('filter: brightness(' + brightness.toFixed(2) + ') drop-shadow(0 0 4px #4488ff) drop-shadow(0 0 8px #4488ff)');
-        styles.push('stroke: #4488ff !important');
-        styles.push('stroke-width: 2');
+        filters.push('drop-shadow(0 0 4px #4488ff) drop-shadow(0 0 8px #4488ff)');
+        el.setAttribute('stroke', '#4488ff');
+        el.setAttribute('stroke-width', '2');
+      }
+
+      if (filters.length > 0) {
+        styles.push(`filter: ${filters.join(' ')}`);
       }
 
       el.setAttribute('style', styles.join('; '));
