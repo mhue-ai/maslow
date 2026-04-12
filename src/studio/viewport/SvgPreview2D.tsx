@@ -319,14 +319,20 @@ function enhanceSvg(
       el.setAttribute('fill', `rgba(10, 5, 0, 0.80)`);
       if (hasStroke) el.setAttribute('stroke', '#882222');
     } else {
-      // Face — stays at surface level. Show original colors.
-      // Add subtle raised appearance (lighter border) for clarity against pocketed neighbors
+      // Face — stays at surface level, must clearly stand out as "raised"
+      // Override fill to material/wood color so face elements are bright
+      // against any dark pocketed background behind them
       const currentFill = el.getAttribute('fill');
       if (currentFill === 'none' || !currentFill) {
-        el.setAttribute('fill', 'rgba(0, 0, 0, 0.02)');
+        // Outline-only: near-transparent for hit detection
+        el.setAttribute('fill', 'rgba(196, 166, 106, 0.05)');
+      } else {
+        // Filled element at face: show in material color (raised wood surface)
+        el.setAttribute('fill', '#c4a66a');
+        if (hasStroke) el.setAttribute('stroke', '#8a6a3a');
       }
-      // Face elements get a subtle bright edge to show they're "raised"
-      filters.push('drop-shadow(1px 1px 1px rgba(0,0,0,0.3))');
+      // Raised shadow to visually "lift" above pocketed areas
+      filters.push('drop-shadow(1px 2px 2px rgba(0,0,0,0.5))');
     }
 
     // Selection highlight
