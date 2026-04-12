@@ -272,9 +272,18 @@ function enhanceSvg(
   }
   const bitStrokeWidth = (bitDiameter / material.width) * svgWidth;
 
+  // Index only shape elements — NOT text (SVGLoader skips text, so indices would mismatch)
+  // Text stays visible in the native SVG render but isn't clickable for depth assignment
   const shapeElements = svg.querySelectorAll(
-    'path, polygon, polyline, rect, circle, ellipse, line, text'
+    'path, polygon, polyline, rect, circle, ellipse, line'
   );
+
+  // Style text elements separately: always show at face level (material color)
+  const textElements = svg.querySelectorAll('text');
+  textElements.forEach((textEl) => {
+    textEl.setAttribute('fill', '#c4a66a');
+    textEl.setAttribute('style', 'cursor: default; filter: drop-shadow(1px 2px 2px rgba(0,0,0,0.5)); pointer-events: none;');
+  });
 
   let index = 0;
   shapeElements.forEach((el) => {
