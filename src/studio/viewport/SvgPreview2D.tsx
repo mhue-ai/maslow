@@ -64,12 +64,24 @@ export function SvgPreview2D() {
 
         const w = maxX - minX;
         const h = maxY - minY;
-        const area = w * h;
+        const bboxArea = w * h;
 
-        // Filter out degenerate shapes: tiny or extremely thin (construction artifacts)
-        // Use a very small threshold — coordinates may be in cm, mm, or px
-        if (area < 0.001) continue;
-        if (w > 0 && h > 0 && (w / h > 100 || h / w > 100)) continue;
+        // Compute actual polygon area (shoelace formula) to detect degenerate shapes
+        let polyArea = 0;
+        for (let k = 0; k < pts.length; k++) {
+          const j = (k + 1) % pts.length;
+          polyArea += pts[k].x * pts[j].y;
+          polyArea -= pts[j].x * pts[k].y;
+        }
+        polyArea = Math.abs(polyArea) / 2;
+
+        // Filter degenerate shapes:
+        // 1. Too small (less than 1 sq mm in material space)
+        if (polyArea < 1) continue;
+        // 2. Extremely thin (aspect ratio > 30:1)
+        if (w > 0 && h > 0 && (w / h > 30 || h / w > 30)) continue;
+        // 3. Very low fill ratio (polygon area << bounding box = spiky/degenerate)
+        if (bboxArea > 0 && polyArea / bboxArea < 0.05) continue;
 
         // Convert to SVG polygon points string
         const pointsStr = pts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
