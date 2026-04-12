@@ -58,9 +58,11 @@ export function SvgPreview2D() {
       if (!entry) return;
 
       if (entry.isText) {
-        el.setAttribute('fill', '#ffffff');
+        el.setAttribute('fill', '#333333');
         el.setAttribute('stroke', 'none');
-        el.setAttribute('style', 'pointer-events: none;');
+        (el as HTMLElement).style.fill = '#333333';
+        (el as HTMLElement).style.stroke = 'none';
+        el.setAttribute('style', ((el.getAttribute('style') ?? '') + '; pointer-events: none; fill: #333333; stroke: none;'));
         return;
       }
 
@@ -99,12 +101,22 @@ export function SvgPreview2D() {
         stroke = '#333333';
       }
 
-      // Override original fill/stroke — normalizer already inlined CSS
+      // Override via BOTH attribute AND style — CSS inline style has higher
+      // precedence than XML attributes. Fusion 360 SVGs have style="fill:..."
+      // which overrides setAttribute('fill') if not also set in style.
       el.setAttribute('fill', fill);
       el.setAttribute('stroke', stroke);
       el.setAttribute('stroke-width', '0.3');
+      (el as HTMLElement).style.fill = fill;
+      (el as HTMLElement).style.stroke = stroke;
+      (el as HTMLElement).style.strokeWidth = '0.3';
 
-      const styles: string[] = ['cursor: crosshair'];
+      const styles: string[] = [
+        'cursor: crosshair',
+        `fill: ${fill}`,
+        `stroke: ${stroke}`,
+        'stroke-width: 0.3',
+      ];
 
       if (isProfile) {
         styles.push('stroke-dasharray: 8 4');
