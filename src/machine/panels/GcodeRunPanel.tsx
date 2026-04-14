@@ -1,136 +1,471 @@
+import { useState, useEffect, useCallback } from 'react';
 import { useDesignStore } from '../../store/designStore';
 import { useMachineStore } from '../../store/machineStore';
 import { send } from '../../comms/maslowSocket';
+import { checkBounds } from '../../gcode/boundsCheck';
+
+type JobPhase = 'idle' | 'uploading' | 'preflight' | 'ready' | 'running' | 'done';
+
+const JOB_FILENAME = 'job.nc';
+const UPLOAD_BASE = '/maslow';
+
+interface FlashInfo {
+  total: string;
+  used: string;
+  freeBytes: number;
+  files: { name: string; size: string }[];
+}
+
+interface PreflightCheck {
+  id: string;
+  label: string;
+  pass: boolean;
+  detail: string;
+}
+
+// ESP32 SPIFFS/LittleFS partition is typically 1-4 MB, NOT the full flash chip.
+// ESP3D misleadingly reports the full flash chip size (e.g., "120 MB") as "total".
+// We cap at a realistic filesystem size to prevent filling the partition.
+const MAX_REALISTIC_FS_SIZE = 2 * 1024 * 1024; // 2 MB — ESP32-S3 LittleFS partition (confirmed via device)
+const RESERVED_SPACE = 200 * 1024; // Keep 200 KB reserved for system files (config, webui, preferences)
+
+function parseFlashInfo(data: Record<string, unknown>): FlashInfo {
+  const total = String(data.total ?? '0');
+  const used = String(data.used ?? '0');
+  const files = Array.isArray(data.files) ? (data.files as { name: string; size: string }[]) : [];
+  const parseSize = (s: string): number => {
+    const m = s.match(/([\d.]+)\s*(KB|MB|GB|B)/i);
+    if (!m) return parseInt(s) || 0;
+    const v = parseFloat(m[1]);
+    const u = m[2].toUpperCase();
+    if (u === 'GB') return v * 1024 * 1024 * 1024;
+    if (u === 'MB') return v * 1024 * 1024;
+    if (u === 'KB') return v * 1024;
+    return v;
+  };
+
+  let totalBytes = parseSize(total);
+  const usedBytes = parseSize(used);
+
+  // If reported total is unrealistically large (ESP3D bug), cap it
+  if (totalBytes > MAX_REALISTIC_FS_SIZE) {
+    totalBytes = MAX_REALISTIC_FS_SIZE;
+  }
+
+  // Subtract reserved space for system files
+  const freeBytes = Math.max(0, totalBytes - usedBytes - RESERVED_SPACE);
+
+  return { total: formatBytes(totalBytes), used, freeBytes, files };
+}
+
+function formatBytes(b: number): string {
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 export function GcodeRunPanel() {
   const gcode = useDesignStore((s) => s.gcode);
+  const material = useDesignStore((s) => s.material);
+  const toolConfig = useDesignStore((s) => s.toolConfig);
   const connection = useMachineStore((s) => s.connection);
   const status = useMachineStore((s) => s.status);
-  const jobLines = useMachineStore((s) => s.jobLines);
-  const jobCurrentLine = useMachineStore((s) => s.jobCurrentLine);
-  const jobStartTime = useMachineStore((s) => s.jobStartTime);
-  const jobRunning = useMachineStore((s) => s.jobRunning);
-  const setJob = useMachineStore((s) => s.setJob);
-  const clearJob = useMachineStore((s) => s.clearJob);
+  const minfo = useMachineStore((s) => s.minfo);
+
+  const [phase, setPhase] = useState<JobPhase>('idle');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [flashInfo, setFlashInfo] = useState<FlashInfo | null>(null);
+  const [flashLoading, setFlashLoading] = useState(false);
+  const [checks, setChecks] = useState<PreflightCheck[]>([]);
 
   const disabled = connection !== 'connected';
 
-  const handleSendGcode = () => {
+  const pollFlashInfo = useCallback(async () => {
+    setFlashLoading(true);
+    try {
+      const resp = await fetch(`${UPLOAD_BASE}/files?path=/`, { signal: AbortSignal.timeout(5000) });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      setFlashInfo(parseFlashInfo(await resp.json()));
+      setError(null);
+    } catch {
+      try {
+        const resp = await fetch(`${UPLOAD_BASE}/upload?path=/`, { signal: AbortSignal.timeout(5000) });
+        if (resp.ok) setFlashInfo(parseFlashInfo(await resp.json()));
+      } catch { setFlashInfo(null); }
+    } finally {
+      setFlashLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (connection === 'connected') pollFlashInfo();
+  }, [connection, pollFlashInfo]);
+
+  useEffect(() => {
+    if (phase === 'preflight') pollFlashInfo();
+  }, [phase, pollFlashInfo]);
+
+  const gcodeSize = gcode ? new Blob([gcode]).size : 0;
+  const gcodeLines = gcode ? gcode.split('\n').filter((l) => l.trim() && !l.startsWith(';')).length : 0;
+  const hasSpace = !flashInfo || flashInfo.freeBytes >= gcodeSize;
+
+  /** Run all pre-flight checks */
+  const runPreflight = useCallback(() => {
+    const results: PreflightCheck[] = [];
+    const machineState = status?.state ?? 'Unknown';
+
+    // 1. Connection
+    results.push({
+      id: 'connection',
+      label: 'Connected',
+      pass: connection === 'connected',
+      detail: connection === 'connected' ? 'WebSocket connected' : 'Not connected to machine',
+    });
+
+    // 2. Machine state
+    results.push({
+      id: 'state',
+      label: 'Machine Idle',
+      pass: machineState === 'Idle',
+      detail: machineState === 'Idle' ? 'Machine is idle and ready' :
+              machineState === 'Alarm' ? 'Machine in alarm — send $X to clear' :
+              `Machine is ${machineState} — wait for idle`,
+    });
+
+    // 3. Homed / calibrated
+    results.push({
+      id: 'homed',
+      label: 'Calibrated & Homed',
+      pass: minfo?.homed === true,
+      detail: minfo?.homed ? 'Machine position is known' : 'Not homed — run calibration or $H first',
+    });
+
+    // 4. Belt tension (check that belts are extended / have length)
+    const beltsOk = minfo ? (minfo.tl > 0 || minfo.tr > 0 || minfo.bl > 0 || minfo.br > 0) : false;
+    results.push({
+      id: 'belts',
+      label: 'Belts Tensioned',
+      pass: beltsOk,
+      detail: beltsOk ? `Belt lengths: TL=${minfo!.tl.toFixed(0)} TR=${minfo!.tr.toFixed(0)} BL=${minfo!.bl.toFixed(0)} BR=${minfo!.br.toFixed(0)}` :
+              'Belt lengths are zero — retract, extend, attach, and tension belts',
+    });
+
+    // 5. Z position (should be near 0 or above — not buried in material)
+    const zPos = status?.position.z ?? -999;
+    results.push({
+      id: 'zpos',
+      label: 'Z Position Safe',
+      pass: zPos >= -2,
+      detail: zPos >= -2 ? `Z = ${zPos.toFixed(1)}mm (safe)` :
+              `Z = ${zPos.toFixed(1)}mm — retract Z above material before starting`,
+    });
+
+    // 6. Bounds check
+    if (gcode) {
+      const lines = gcode.split('\n');
+      const bounds = checkBounds(lines, material, toolConfig.workOrigin, toolConfig.edgeClearance);
+      results.push({
+        id: 'bounds',
+        label: 'Within Cutting Area',
+        pass: bounds.inBounds,
+        detail: bounds.inBounds
+          ? `Toolpath: ${(bounds.maxX - bounds.minX).toFixed(0)}×${(bounds.maxY - bounds.minY).toFixed(0)}mm`
+          : bounds.warnings.join('; '),
+      });
+    }
+
+    // 7. Storage space
+    results.push({
+      id: 'storage',
+      label: 'Storage Space',
+      pass: hasSpace,
+      detail: hasSpace
+        ? `Need ${formatBytes(gcodeSize)}, ${flashInfo ? formatBytes(flashInfo.freeBytes) + ' free' : 'space available'}`
+        : `Need ${formatBytes(gcodeSize)} but only ${formatBytes(flashInfo?.freeBytes ?? 0)} free`,
+    });
+
+    setChecks(results);
+    return results;
+  }, [connection, status, minfo, gcode, material, toolConfig, hasSpace, gcodeSize, flashInfo]);
+
+  // Re-run checks when machine state changes during preflight
+  useEffect(() => {
+    if (phase === 'preflight') runPreflight();
+  }, [phase, runPreflight]);
+
+  /** Step 1: Upload */
+  const handleUpload = async () => {
     if (!gcode) return;
-    const lines = gcode.split('\n').filter((l) => l.trim() && !l.startsWith(';'));
-    setJob(lines);
-    // Start streaming — send first line
-    if (lines.length > 0) send(lines[0]);
+    if (flashInfo && gcodeSize > flashInfo.freeBytes) {
+      setError(`Not enough space: need ${formatBytes(gcodeSize)}, only ${formatBytes(flashInfo.freeBytes)} free.`);
+      return;
+    }
+
+    setError(null);
+    setPhase('uploading');
+    setUploadProgress(0);
+
+    try {
+      const blob = new Blob([gcode], { type: 'text/plain' });
+      const formData = new FormData();
+      formData.append('path', '/');
+      formData.append('file', blob, JOB_FILENAME);
+
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try { setFlashInfo(parseFlashInfo(JSON.parse(xhr.responseText))); } catch { /* ok */ }
+            resolve();
+          } else reject(new Error(`Upload failed: HTTP ${xhr.status}`));
+        };
+        xhr.onerror = () => reject(new Error('Network error'));
+        xhr.ontimeout = () => reject(new Error('Upload timed out'));
+        xhr.timeout = 60000;
+        xhr.open('POST', `${UPLOAD_BASE}/upload`);
+        xhr.send(formData);
+      });
+
+      setUploadProgress(100);
+      // Move to preflight — run checks before allowing execution
+      setPhase('preflight');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Upload failed');
+      setPhase('idle');
+    }
   };
 
-  // Progress calculations
-  const total = jobLines.length;
-  const current = jobCurrentLine;
-  const progress = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
-  const elapsed = jobStartTime ? Math.round((Date.now() - jobStartTime) / 1000) : 0;
-  const rate = elapsed > 0 ? current / elapsed : 0;
-  const remaining = rate > 0 ? Math.round((total - current) / rate) : 0;
-
-  const formatTime = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m}:${sec.toString().padStart(2, '0')}`;
+  /** Step 2: Pre-flight passed, move to ready */
+  const handlePreflightPass = () => {
+    setPhase('ready');
   };
+
+  /** Step 3: Run */
+  const handleRun = () => {
+    send(`$LocalFS/Run=${JOB_FILENAME}`);
+    setPhase('running');
+  };
+
+  const handleReset = () => {
+    setPhase('idle');
+    setUploadProgress(0);
+    setError(null);
+    setChecks([]);
+  };
+
+  const machineState = status?.state ?? 'Unknown';
+  const isRunning = machineState === 'Run' || machineState === 'Hold';
+
+  if (phase === 'running' && !isRunning && machineState === 'Idle') {
+    setTimeout(() => setPhase('done'), 500);
+  }
+
+  const allChecksPassed = checks.length > 0 && checks.every((c) => c.pass);
+  const criticalFails = checks.filter((c) => !c.pass && ['connection', 'state'].includes(c.id));
 
   return (
     <div>
       <h3>G-Code Control</h3>
 
-      {!gcode ? (
-        <p style={{ fontSize: 12, color: '#555' }}>
-          Generate G-code in the Design Studio first.
-        </p>
-      ) : (
-        <div>
-          <p style={{ fontSize: 12, color: '#aaa', marginBottom: 8 }}>
-            G-code ready ({gcode.split('\n').length} lines)
-          </p>
-
-          <button
-            className="btn btn-primary"
-            disabled={disabled || jobRunning}
-            onClick={handleSendGcode}
-            style={{ width: '100%', marginBottom: 8 }}
-          >
-            {jobRunning ? 'Running...' : 'Send to Machine'}
-          </button>
+      {/* Flash storage info */}
+      {connection === 'connected' && (
+        <div style={{
+          fontSize: 10, color: '#888', marginBottom: 8, padding: '6px 8px',
+          background: '#0d0d1a', borderRadius: 4,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <div>
+            {flashLoading ? <span style={{ color: '#555' }}>Checking storage...</span> :
+              flashInfo ? (
+                <>
+                  <span style={{ color: flashInfo.freeBytes < 10000 ? '#ff6666' : '#888' }}>
+                    {formatBytes(flashInfo.freeBytes)} free
+                  </span>
+                  <span style={{ color: '#555' }}> / {flashInfo.total}</span>
+                </>
+              ) : <span style={{ color: '#555' }}>Storage info unavailable</span>
+            }
+          </div>
+          <button className="btn btn-sm" onClick={pollFlashInfo} disabled={flashLoading}
+            style={{ padding: '1px 6px', fontSize: 9, minWidth: 0 }}>↻</button>
         </div>
       )}
 
-      {/* Job progress */}
-      {total > 0 && (
-        <div style={{ marginTop: 8, marginBottom: 8 }}>
+      {!gcode ? (
+        <p style={{ fontSize: 12, color: '#555' }}>Generate G-code in the Design Studio first.</p>
+      ) : (
+        <>
+          {/* File info */}
           <div style={{
-            height: 8,
-            background: '#1a1a2e',
-            borderRadius: 4,
-            overflow: 'hidden',
-            marginBottom: 4,
+            fontSize: 11, color: '#aaa', marginBottom: 8, padding: '6px 8px',
+            background: '#0d0d1a', borderRadius: 4, fontFamily: 'monospace',
+            display: 'flex', justifyContent: 'space-between',
           }}>
-            <div style={{
-              height: '100%',
-              width: `${progress}%`,
-              background: jobRunning ? '#4488ff' : '#44cc44',
-              transition: 'width 0.3s',
-              borderRadius: 4,
-            }} />
+            <span>{gcodeLines} commands</span>
+            <span style={{ color: !hasSpace ? '#ff6666' : '#888' }}>{formatBytes(gcodeSize)}</span>
           </div>
-          <div style={{ fontSize: 11, color: '#888', display: 'flex', justifyContent: 'space-between' }}>
-            <span>Line {current}/{total} ({progress}%)</span>
-            <span>{formatTime(elapsed)}{remaining > 0 ? ` / ~${formatTime(elapsed + remaining)}` : ''}</span>
-          </div>
-          {!jobRunning && current >= total && (
-            <div style={{ fontSize: 12, color: '#44cc44', marginTop: 4 }}>
-              Job complete
+
+          {error && <div className="warning" style={{ marginBottom: 8 }}>{error}</div>}
+
+          {/* ── Step 1: Upload ── */}
+          {(phase === 'idle' || phase === 'uploading') && (
+            <>
+              <button className="btn btn-primary" disabled={disabled || phase === 'uploading' || !hasSpace}
+                onClick={handleUpload} style={{ width: '100%', marginBottom: 4 }}>
+                {phase === 'uploading' ? `Uploading... ${uploadProgress}%` : '1. Upload to Machine'}
+              </button>
+              {!hasSpace && (
+                <div style={{ fontSize: 10, color: '#ff6666', marginBottom: 4 }}>
+                  Not enough space. Need {formatBytes(gcodeSize)}, only {formatBytes(flashInfo?.freeBytes ?? 0)} free.
+                </div>
+              )}
+              {phase === 'uploading' && (
+                <div style={{ height: 4, background: '#1a1a2e', borderRadius: 2, overflow: 'hidden', marginBottom: 8 }}>
+                  <div style={{ height: '100%', width: `${uploadProgress}%`, background: '#4488ff', borderRadius: 2, transition: 'width 0.2s' }} />
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── Step 2: Pre-flight checks ── */}
+          {phase === 'preflight' && (
+            <div>
+              <div style={{
+                fontSize: 11, color: '#44cc44', marginBottom: 8, padding: '4px 8px',
+                background: 'rgba(68,204,68,0.1)', border: '1px solid rgba(68,204,68,0.3)', borderRadius: 4,
+              }}>
+                ✓ Uploaded {JOB_FILENAME} ({formatBytes(gcodeSize)})
+              </div>
+
+              <h3 style={{ margin: '8px 0 6px' }}>2. Pre-Flight Check</h3>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 8 }}>
+                {checks.map((c) => (
+                  <div key={c.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '5px 8px', borderRadius: 4,
+                    background: c.pass ? 'rgba(68,204,68,0.05)' : 'rgba(255,68,68,0.05)',
+                    border: `1px solid ${c.pass ? 'rgba(68,204,68,0.15)' : 'rgba(255,68,68,0.15)'}`,
+                  }}>
+                    <div style={{
+                      width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
+                      background: c.pass ? '#1a3a1a' : '#3a1a1a',
+                      color: c.pass ? '#44cc44' : '#ff4444',
+                      fontSize: 10, fontWeight: 700,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {c.pass ? '✓' : '✗'}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 11, color: c.pass ? '#aaa' : '#ddd', fontWeight: c.pass ? 400 : 600 }}>
+                        {c.label}
+                      </div>
+                      <div style={{ fontSize: 9, color: c.pass ? '#555' : '#aa6666' }}>
+                        {c.detail}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button
+                  className="btn btn-primary"
+                  disabled={criticalFails.length > 0}
+                  onClick={allChecksPassed ? handlePreflightPass : handlePreflightPass}
+                  style={{
+                    flex: 1,
+                    background: allChecksPassed ? '#1a4a1a' : '#3a3a1a',
+                    border: `1px solid ${allChecksPassed ? '#2a6a2a' : '#5a5a2a'}`,
+                    color: allChecksPassed ? '#44cc44' : '#ccaa44',
+                  }}
+                >
+                  {allChecksPassed ? '3. Proceed to Run' :
+                   criticalFails.length > 0 ? 'Fix Critical Issues First' :
+                   '3. Proceed (with warnings)'}
+                </button>
+                <button className="btn btn-sm" onClick={() => runPreflight()}
+                  style={{ padding: '4px 8px', fontSize: 10 }}>↻</button>
+              </div>
+
+              <button className="btn btn-sm" onClick={handleReset}
+                style={{ width: '100%', marginTop: 4, fontSize: 10, color: '#666' }}>Cancel</button>
             </div>
           )}
+
+          {/* ── Step 3: Ready to run ── */}
+          {phase === 'ready' && (
+            <div>
+              <div style={{
+                fontSize: 11, color: '#44cc44', marginBottom: 8, padding: '4px 8px',
+                background: 'rgba(68,204,68,0.1)', border: '1px solid rgba(68,204,68,0.3)', borderRadius: 4,
+              }}>
+                ✓ Pre-flight passed — ready to cut
+              </div>
+              <button className="btn btn-primary" disabled={disabled} onClick={handleRun}
+                style={{ width: '100%', marginBottom: 4, background: '#1a4a1a', border: '1px solid #2a6a2a', fontSize: 14 }}>
+                ▶ Start Cutting
+              </button>
+              <button className="btn btn-sm" onClick={() => setPhase('preflight')}
+                style={{ width: '100%', fontSize: 10, color: '#666' }}>Back to Pre-Flight</button>
+            </div>
+          )}
+
+          {/* ── Running ── */}
+          {phase === 'running' && (
+            <div>
+              <div style={{
+                fontSize: 12, textAlign: 'center', marginBottom: 8, padding: '6px 8px', borderRadius: 4,
+                color: machineState === 'Hold' ? '#ffaa44' : '#4488ff',
+                background: machineState === 'Hold' ? 'rgba(255,170,68,0.1)' : 'rgba(68,136,255,0.1)',
+                border: `1px solid ${machineState === 'Hold' ? 'rgba(255,170,68,0.3)' : 'rgba(68,136,255,0.3)'}`,
+              }}>
+                {machineState === 'Hold' ? '⏸ Paused' : '▶ Running'} — {JOB_FILENAME}
+              </div>
+              {status && (
+                <div style={{ fontSize: 10, color: '#888', fontFamily: 'monospace', marginBottom: 8 }}>
+                  X: {status.position.x.toFixed(1)}  Y: {status.position.y.toFixed(1)}  Z: {status.position.z.toFixed(1)} mm
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Done ── */}
+          {phase === 'done' && (
+            <div>
+              <div style={{
+                fontSize: 12, color: '#44cc44', textAlign: 'center', marginBottom: 8, padding: '6px 8px',
+                background: 'rgba(68,204,68,0.1)', border: '1px solid rgba(68,204,68,0.3)', borderRadius: 4,
+              }}>
+                ✓ Job Complete
+              </div>
+              <button className="btn btn-sm" onClick={handleReset} style={{ width: '100%' }}>New Job</button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Machine controls during run */}
+      {connection === 'connected' && (phase === 'running' || isRunning) && (
+        <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
+          <button className="btn btn-sm" disabled={machineState !== 'Run'} onClick={() => send('!')} style={{ flex: 1 }}>Pause</button>
+          <button className="btn btn-sm" disabled={machineState !== 'Hold'} onClick={() => send('~')} style={{ flex: 1 }}>Resume</button>
+          <button className="btn btn-sm" onClick={() => { send('\x18'); setPhase('idle'); }}
+            style={{ flex: 1, background: '#4a1a1a', borderColor: '#8a2a2a' }}>Stop</button>
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
-        <button
-          className="btn btn-sm"
-          disabled={disabled || status?.state !== 'Run'}
-          onClick={() => send('!')}
-          style={{ flex: 1 }}
-        >
-          Pause
-        </button>
-        <button
-          className="btn btn-sm"
-          disabled={disabled || status?.state !== 'Hold'}
-          onClick={() => send('~')}
-          style={{ flex: 1 }}
-        >
-          Resume
-        </button>
-        <button
-          className="btn btn-sm"
-          disabled={disabled}
-          onClick={() => { send('\x18'); clearJob(); }}
-          style={{ flex: 1, background: '#4a1a1a', borderColor: '#8a2a2a' }}
-        >
-          Stop
-        </button>
-      </div>
-
+      {/* Set Zero */}
       <div style={{ marginTop: 12 }}>
         <h3>Set Zero</h3>
         <div style={{ display: 'flex', gap: 4 }}>
-          <button className="btn btn-sm" disabled={disabled} onClick={() => send('G92 Z0')}>
-            Zero Z
-          </button>
-          <button className="btn btn-sm" disabled={disabled} onClick={() => send('G92 X0 Y0')}>
-            Zero XY
-          </button>
-          <button className="btn btn-sm" disabled={disabled} onClick={() => send('G92 X0 Y0 Z0')}>
-            Zero All
-          </button>
+          <button className="btn btn-sm" disabled={disabled} onClick={() => send('G10 L20 P1 Z0')}>Zero Z</button>
+          <button className="btn btn-sm" disabled={disabled} onClick={() => send('G10 L20 P1 X0 Y0')}>Zero XY</button>
+          <button className="btn btn-sm" disabled={disabled} onClick={() => send('G10 L20 P1 X0 Y0 Z0')}>Zero All</button>
         </div>
       </div>
     </div>

@@ -6,10 +6,13 @@ import { CommandPanel } from './panels/CommandPanel';
 import { CalibratePanel } from './panels/CalibratePanel';
 import { GcodeRunPanel } from './panels/GcodeRunPanel';
 import { TestPanel } from './panels/TestPanel';
+import { FirmwarePanel } from './panels/FirmwarePanel';
+import { FileManagerPanel } from './panels/FileManagerPanel';
+import { MachineSettingsPanel } from './panels/MachineSettingsPanel';
 import { useMachineStore } from '../store/machineStore';
 import { send } from '../comms/maslowSocket';
 
-type MachineTab = 'monitor' | 'jog' | 'calibrate' | 'gcode' | 'console' | 'test';
+type MachineTab = 'monitor' | 'jog' | 'calibrate' | 'gcode' | 'console' | 'settings' | 'files' | 'firmware' | 'test';
 
 const TABS: { id: MachineTab; label: string }[] = [
   { id: 'monitor', label: 'Monitor' },
@@ -17,6 +20,9 @@ const TABS: { id: MachineTab; label: string }[] = [
   { id: 'calibrate', label: 'Calibrate' },
   { id: 'gcode', label: 'G-Code' },
   { id: 'console', label: 'Console' },
+  { id: 'settings', label: 'Settings' },
+  { id: 'files', label: 'Files' },
+  { id: 'firmware', label: 'Firmware' },
   { id: 'test', label: 'Test' },
 ];
 
@@ -73,6 +79,9 @@ export function MachineControl() {
         {tab === 'calibrate' && <CalibratePanel />}
         {tab === 'gcode' && <GcodeRunPanel />}
         {tab === 'console' && <CommandPanel />}
+        {tab === 'settings' && <MachineSettingsPanel />}
+        {tab === 'files' && <FileManagerPanel />}
+        {tab === 'firmware' && <FirmwarePanel />}
         {tab === 'test' && <TestPanel />}
       </div>
     </div>

@@ -17,6 +17,7 @@ export function parseMInfo(text: string): MInfo | null {
     return {
       homed: Boolean(obj.homed),
       calibrationInProgress: Boolean(obj.calibrationInProgress),
+      extended: Boolean(obj.extended),
       tl: Number(obj.tl) || 0,
       tr: Number(obj.tr) || 0,
       bl: Number(obj.bl) || 0,

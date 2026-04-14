@@ -81,6 +81,18 @@ interface DesignState {
   showToolpaths: boolean;
   toggleToolpaths: () => void;
 
+  // Simulation playback
+  simPlaying: boolean;
+  simProgress: number;
+  simSpeed: number;
+  simTotalSegments: number;
+  simPlay: () => void;
+  simPause: () => void;
+  simReset: () => void;
+  simSetProgress: (n: number) => void;
+  simSetSpeed: (s: number) => void;
+  simSetTotalSegments: (n: number) => void;
+
   // Undo/redo
   history: HistoryEntry[];
   historyIndex: number;
@@ -263,6 +275,18 @@ export const useDesignStore = create<DesignState>((set, get) => ({
   toggleCutPreview: () => set((s) => ({ showCutPreview: !s.showCutPreview })),
   showToolpaths: false,
   toggleToolpaths: () => set((s) => ({ showToolpaths: !s.showToolpaths })),
+
+  // Simulation playback
+  simPlaying: false,
+  simProgress: 0,
+  simSpeed: 1,
+  simTotalSegments: 0,
+  simPlay: () => set({ simPlaying: true }),
+  simPause: () => set({ simPlaying: false }),
+  simReset: () => set({ simPlaying: false, simProgress: 0 }),
+  simSetProgress: (n) => set({ simProgress: n }),
+  simSetSpeed: (s) => set({ simSpeed: s }),
+  simSetTotalSegments: (n) => set({ simTotalSegments: n }),
 
   // Undo/redo — keep last 50 states
   history: [],

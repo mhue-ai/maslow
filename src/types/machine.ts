@@ -31,11 +31,12 @@ export interface MachineStatus {
 export interface MInfo {
   homed: boolean;
   calibrationInProgress: boolean;
+  extended: boolean;
   tl: number;  // belt length top-left
   tr: number;  // top-right
   bl: number;  // bottom-left
   br: number;  // bottom-right
-  etl: number; // extended top-left
+  etl: number; // position error top-left
   etr: number;
   ebl: number;
   ebr: number;

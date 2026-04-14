@@ -13,7 +13,7 @@ export function DepthPanel() {
 
   if (paths.length === 0) {
     return (
-      <div>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         <h3>Shapes</h3>
         <p style={{ fontSize: 11, color: '#555' }}>Import an SVG to see shapes</p>
       </div>
@@ -61,65 +61,17 @@ export function DepthPanel() {
   };
 
   const selectedLevel = selectedPathId ? (shapeLevels.get(selectedPathId)?.level ?? 0) : 0;
+  const selectedName = selectedPathId
+    ? (pathMap.get(selectedPathId)?.data.name ?? (selectedPathId.startsWith('ring-') ? 'Border Ring' : 'Shape'))
+    : null;
 
   return (
-    <div>
-      <h3 data-tip="Each shape has a depth level. 0mm = face (no cut). Higher = deeper pocket. Click shapes in the design to set depth.">Shapes ({paths.length})</h3>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
 
-      <p style={{ fontSize: 10, color: '#555', marginBottom: 6 }}>
-        Click = deepen 2mm. Shift+click = reset.
-      </p>
-
-      <div className="path-list">
-        {orderedIds.map((id, idx) => {
-          const path = pathMap.get(id);
-          const isRing = id.startsWith('ring-');
-          const shapeName = path?.data.name ?? (isRing ? `Border Ring ${id.replace('ring-', '')}` : id);
-          const info = getInfo(id);
-          const isSelected = selectedPathId === id;
-          const isProfile = id === profileCutId;
-
-          return (
-            <div
-              key={id}
-              className={`path-item ${isSelected ? 'selected' : ''}`}
-              onClick={() => selectPath(id)}
-            >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginRight: 4 }}>
-                <button
-                  className="btn btn-sm"
-                  style={{ padding: '0 3px', fontSize: 8, lineHeight: 1 }}
-                  onClick={(e) => { e.stopPropagation(); moveOperation(id, 'up'); }}
-                  disabled={idx === 0}
-                >^</button>
-                <button
-                  className="btn btn-sm"
-                  style={{ padding: '0 3px', fontSize: 8, lineHeight: 1 }}
-                  onClick={(e) => { e.stopPropagation(); moveOperation(id, 'down'); }}
-                  disabled={idx === orderedIds.length - 1}
-                >v</button>
-              </div>
-              <div className="path-swatch" style={{
-                background: info.color,
-                border: isProfile ? '1px solid #ffaa44' : 'none',
-              }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {isProfile ? '✂ ' : ''}{isRing ? '◇ ' : ''}{shapeName}
-                </div>
-                <div style={{ fontSize: 9, color: '#888' }}>
-                  {info.label}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Selected shape controls */}
+      {/* ── Selected shape controls — FIXED at top ── */}
       {selectedPathId && (
-        <div style={{ marginTop: 12 }}>
-          <h3>{pathMap.get(selectedPathId)?.data.name ?? (selectedPathId.startsWith('ring-') ? `Border Ring` : 'Shape')}</h3>
+        <div style={{ flexShrink: 0, paddingBottom: 8, borderBottom: '1px solid #2a2a4a', marginBottom: 8 }}>
+          <h3 style={{ margin: '0 0 6px' }}>{selectedName}</h3>
 
           <label>
             Level
@@ -146,7 +98,7 @@ export function DepthPanel() {
             </button>
           </div>
 
-          <p style={{ fontSize: 10, color: '#555', marginTop: 6 }}>
+          <p style={{ fontSize: 10, color: '#555', marginTop: 6, marginBottom: 0 }}>
             {selectedLevel <= 0 && 'No cut — stays at material surface'}
             {selectedLevel > 0 && selectedLevel < thickness && `Pocket ${selectedLevel}mm deep, cut inside boundary`}
             {selectedLevel >= thickness && (selectedPathId === profileCutId
@@ -156,8 +108,8 @@ export function DepthPanel() {
         </div>
       )}
 
-      <div style={{ marginTop: 16 }}>
-        <h3>Quick Set</h3>
+      {/* ── Quick Set — FIXED below selected shape ── */}
+      <div style={{ flexShrink: 0, marginBottom: 8 }}>
         <div style={{ display: 'flex', gap: 4 }}>
           <button className="btn btn-sm" onClick={() => paths.forEach((p) => { if (p.data.id !== profileCutId) setShapeLevel(p.data.id, 0); })}>
             All Face
@@ -165,6 +117,62 @@ export function DepthPanel() {
           <button className="btn btn-sm" onClick={() => paths.forEach((p) => { if (p.data.id !== profileCutId) setShapeLevel(p.data.id, 6); })}>
             All 6mm
           </button>
+        </div>
+      </div>
+
+      {/* ── Shapes list — SCROLLABLE ── */}
+      <div style={{ flexShrink: 0, marginBottom: 4 }}>
+        <h3 style={{ margin: '0 0 4px' }}>Shapes ({paths.length})</h3>
+        <p style={{ fontSize: 10, color: '#555', margin: '0 0 4px' }}>
+          Click = deepen 2mm. Shift+click = reset.
+        </p>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+        <div className="path-list">
+          {orderedIds.map((id, idx) => {
+            const path = pathMap.get(id);
+            const isRing = id.startsWith('ring-');
+            const shapeName = path?.data.name ?? (isRing ? `Border Ring ${id.replace('ring-', '')}` : id);
+            const info = getInfo(id);
+            const isSelected = selectedPathId === id;
+            const isProfile = id === profileCutId;
+
+            return (
+              <div
+                key={id}
+                className={`path-item ${isSelected ? 'selected' : ''}`}
+                onClick={() => selectPath(id)}
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginRight: 4 }}>
+                  <button
+                    className="btn btn-sm"
+                    style={{ padding: '0 3px', fontSize: 8, lineHeight: 1 }}
+                    onClick={(e) => { e.stopPropagation(); moveOperation(id, 'up'); }}
+                    disabled={idx === 0}
+                  >^</button>
+                  <button
+                    className="btn btn-sm"
+                    style={{ padding: '0 3px', fontSize: 8, lineHeight: 1 }}
+                    onClick={(e) => { e.stopPropagation(); moveOperation(id, 'down'); }}
+                    disabled={idx === orderedIds.length - 1}
+                  >v</button>
+                </div>
+                <div className="path-swatch" style={{
+                  background: info.color,
+                  border: isProfile ? '1px solid #ffaa44' : 'none',
+                }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {isProfile ? '✂ ' : ''}{isRing ? '◇ ' : ''}{shapeName}
+                  </div>
+                  <div style={{ fontSize: 9, color: '#888' }}>
+                    {info.label}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

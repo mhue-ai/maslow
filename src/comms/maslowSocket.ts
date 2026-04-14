@@ -8,6 +8,11 @@ let statusPollTimer: ReturnType<typeof setInterval> | null = null;
 let lastResponseTime = 0;
 let healthCheckTimer: ReturnType<typeof setInterval> | null = null;
 
+// Buffer-stuffing: track how many bytes are in the GRBL serial buffer
+const GRBL_BUFFER_SIZE = 127; // GRBL RX buffer is 128 bytes, keep 1 byte margin
+let bufferUsed = 0;
+let pendingLineLengths: number[] = []; // track byte length of each sent line
+
 export function connect(url: string): void {
   const store = useMachineStore.getState();
 
@@ -35,9 +40,12 @@ export function connect(url: string): void {
     store.setConnection('connected');
     store.addConsoleMessage({ timestamp: Date.now(), text: `Connected to ${url}`, type: 'info' });
     lastResponseTime = Date.now();
+    bufferUsed = 0;
+    pendingLineLengths = [];
 
-    // Status polling — 1 second interval (ESP32 friendly)
+    // Status polling — slower during jobs to avoid competing with G-code
     statusPollTimer = setInterval(() => {
+      // ? is a realtime command in GRBL — doesn't use the serial buffer
       send('?');
     }, 1000);
 
@@ -133,6 +141,13 @@ export function send(command: string): void {
   }
 }
 
+/** Start streaming a job — call after setJob() to begin buffer-stuffed sending */
+export function startJobStream(): void {
+  bufferUsed = 0;
+  pendingLineLengths = [];
+  pumpJobLines();
+}
+
 function cleanup(): void {
   if (statusPollTimer) {
     clearInterval(statusPollTimer);
@@ -142,6 +157,8 @@ function cleanup(): void {
     clearInterval(healthCheckTimer);
     healthCheckTimer = null;
   }
+  bufferUsed = 0;
+  pendingLineLengths = [];
 }
 
 function forceReconnect(): void {
@@ -158,6 +175,34 @@ function forceReconnect(): void {
   setTimeout(() => {
     connect(useMachineStore.getState().url);
   }, 500);
+}
+
+/**
+ * Send as many queued G-code lines as will fit in the GRBL serial buffer.
+ * This is "buffer-stuffing" / "character counting" protocol — dramatically
+ * faster than single-line send-wait-ok.
+ */
+function pumpJobLines(): void {
+  let state = useMachineStore.getState();
+  if (!state.jobRunning) return;
+
+  while (state.jobCurrentLine < state.jobLines.length) {
+    const line = state.jobLines[state.jobCurrentLine];
+    const lineBytes = line.length + 1; // +1 for \n
+
+    if (bufferUsed + lineBytes > GRBL_BUFFER_SIZE) {
+      // Buffer full — wait for 'ok' responses to free space
+      break;
+    }
+
+    // Send this line and track its buffer usage
+    send(line);
+    bufferUsed += lineBytes;
+    pendingLineLengths.push(lineBytes);
+    state.advanceJob();
+    // Re-read state after advance (Zustand set is synchronous)
+    state = useMachineStore.getState();
+  }
 }
 
 function handleMessage(line: string): void {
@@ -182,6 +227,10 @@ function handleMessage(line: string): void {
     const minfo = parseMInfo(line);
     if (minfo) {
       store.setMInfo(minfo);
+      // Auto-save belt snapshot when machine is in a known-good state
+      if (minfo.homed && (minfo.tl > 0 || minfo.tr > 0 || minfo.bl > 0 || minfo.br > 0)) {
+        saveBeltSnapshot(minfo, store.status);
+      }
     }
   }
 
@@ -194,21 +243,65 @@ function handleMessage(line: string): void {
   // Error messages
   if (line.startsWith('error:') || line.includes('ALARM')) {
     store.addConsoleMessage({ timestamp: Date.now(), text: line, type: 'error' });
+    // Free one buffer slot on error too
+    if (pendingLineLengths.length > 0) {
+      bufferUsed -= pendingLineLengths.shift()!;
+    }
     return;
   }
 
-  // ok acknowledgments — advance job streaming
+  // ok acknowledgments — free buffer space and pump more lines
   if (line === 'ok') {
+    if (pendingLineLengths.length > 0) {
+      bufferUsed -= pendingLineLengths.shift()!;
+    }
     if (store.jobRunning) {
-      store.advanceJob();
-      const s = useMachineStore.getState();
-      if (s.jobRunning && s.jobCurrentLine < s.jobLines.length) {
-        send(s.jobLines[s.jobCurrentLine]);
-      }
+      pumpJobLines();
     }
     return;
   }
 
   // Everything else
   store.addConsoleMessage({ timestamp: Date.now(), text: line, type: 'response' });
+}
+
+// ── Belt Position Snapshot (localStorage) ──
+
+const SNAPSHOT_KEY = 'maslow_belt_snapshot';
+
+export interface BeltSnapshot {
+  tl: number;
+  tr: number;
+  bl: number;
+  br: number;
+  z: number;
+  timestamp: number;
+  homed: boolean;
+  extended: boolean;
+}
+
+function saveBeltSnapshot(minfo: import('../types/machine').MInfo, status: import('../types/machine').MachineStatus | null): void {
+  const snapshot: BeltSnapshot = {
+    tl: minfo.tl,
+    tr: minfo.tr,
+    bl: minfo.bl,
+    br: minfo.br,
+    z: status?.position.z ?? 0,
+    timestamp: Date.now(),
+    homed: minfo.homed,
+    extended: minfo.extended,
+  };
+  try {
+    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
+  } catch { /* localStorage full or unavailable */ }
+}
+
+export function loadBeltSnapshot(): BeltSnapshot | null {
+  try {
+    const raw = localStorage.getItem(SNAPSHOT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as BeltSnapshot;
+  } catch {
+    return null;
+  }
 }

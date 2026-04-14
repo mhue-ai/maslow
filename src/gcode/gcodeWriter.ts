@@ -46,13 +46,8 @@ export function gcodeFooter(safeHeight: number): string[] {
   ];
 }
 
-export function downloadGcode(lines: string[], filename: string): void {
+export async function downloadGcode(lines: string[], filename: string): Promise<void> {
+  const { saveGcodeFile } = await import('../utils/fileSave');
   const content = lines.join('\n');
-  const blob = new Blob([content], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  await saveGcodeFile(content, filename);
 }

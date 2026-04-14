@@ -48,24 +48,10 @@ export function SvgPreview2D() {
     svg.setAttribute('width', '100%');
     svg.setAttribute('height', '100%');
 
-    // Inject a global style block that strips ALL original colors with !important
-    // This guarantees our overrides win over any inline styles, CSS classes, etc.
-    const styleBlock = doc.createElementNS('http://www.w3.org/2000/svg', 'style');
-    styleBlock.textContent = `
-      path, polygon, polyline, rect, circle, ellipse, line {
-        fill: #c4a66a !important;
-        stroke: #8a6a3a !important;
-        stroke-width: 0.02 !important;
-        fill-opacity: 1 !important;
-        stroke-opacity: 1 !important;
-      }
-      text {
-        fill: #5a4a2a !important;
-        stroke: none !important;
-        pointer-events: none !important;
-      }
-    `;
-    svg.insertBefore(styleBlock, svg.firstChild);
+    // Remove any existing <style> elements from the SVG — they interfere with
+    // our per-element inline styles. SVG <style> rules in dangerouslySetInnerHTML
+    // can override inline styles in unexpected ways in Chrome.
+    svg.querySelectorAll('style').forEach((s) => s.remove());
 
     // Walk through registry and assign depth styling to each element
     const allElements = svg.querySelectorAll('path, polygon, polyline, rect, circle, ellipse, line, text');
@@ -82,6 +68,7 @@ export function SvgPreview2D() {
       }
 
       el.setAttribute('data-shape-id', entry.id);
+      el.removeAttribute('class'); // Strip CSS classes that could override our fills
 
       const level = shapeLevels.get(entry.id)?.level ?? 0;
       const isSelected = selectedPathId === entry.id;
@@ -312,7 +299,7 @@ export function SvgPreview2D() {
         transition: dragMode !== 'none' ? 'none' : 'transform 0.1s ease-out',
       }}>
         <div style={{
-          background: '#c4a66a',
+          background: '#b49858',
           width: `${Math.min(800, material.width * 0.5)}px`,
           aspectRatio: `${material.width} / ${material.height}`,
           position: 'relative',

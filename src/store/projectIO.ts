@@ -3,6 +3,7 @@ import { parseSvg } from '../svg/svgParser';
 import { svgToShapes } from '../svg/svgToShapes';
 import type { Material, ShapeLevel, ToolConfig, SvgTransformOverride, DesignCopy } from '../types/design';
 import { DEFAULT_SVG_TRANSFORM } from '../types/design';
+import { saveProjectFile } from '../utils/fileSave';
 
 interface ProjectFile {
   version: 2;
@@ -16,7 +17,7 @@ interface ProjectFile {
   designCopies?: DesignCopy[];
 }
 
-export function saveProject(name: string): void {
+export async function saveProject(name: string): Promise<void> {
   const state = useDesignStore.getState();
 
   const project: ProjectFile = {
@@ -32,13 +33,7 @@ export function saveProject(name: string): void {
   };
 
   const json = JSON.stringify(project, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${name}.maslow.json`;
-  a.click();
-  URL.revokeObjectURL(url);
+  await saveProjectFile(json, name);
 }
 
 export async function loadProject(file: File): Promise<string | null> {

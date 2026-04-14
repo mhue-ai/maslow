@@ -7,6 +7,7 @@ import { SvgTransformPanel } from './panels/SvgTransformPanel';
 import { DepthPanel } from './panels/DepthPanel';
 import { ToolSettingsPanel } from './panels/ToolSettingsPanel';
 import { GcodeExportPanel } from './panels/GcodeExportPanel';
+import { SimulationPanel } from './panels/SimulationPanel';
 import { useDesignStore } from '../store/designStore';
 import { saveProject, loadProject } from '../store/projectIO';
 
@@ -38,6 +39,10 @@ export function DesignStudio() {
   };
 
   const handleViewMode = (mode: ViewMode) => {
+    // Reset simulation when leaving toolpaths view
+    if (viewMode === 'toolpaths' && mode !== 'toolpaths') {
+      useDesignStore.getState().simReset();
+    }
     if (mode === '3d') {
       useDesignStore.setState({ showCutPreview: true, showToolpaths: false });
     } else if (mode === 'toolpaths') {
@@ -71,20 +76,28 @@ export function DesignStudio() {
       </div>
 
       {/* Center viewport — switches between 2D design view and 3D preview */}
-      <div className="viewport">
-        {viewMode === 'design' ? (
-          <SvgPreview2D />
-        ) : (
-          <DesignViewport />
+      <div className="viewport" style={{ display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 1, position: 'relative' }}>
+          {viewMode === 'design' ? (
+            <SvgPreview2D />
+          ) : (
+            <DesignViewport />
+          )}
+        </div>
+        {/* Simulation controls — shown in toolpaths mode when gcode exists */}
+        {viewMode === 'toolpaths' && gcode && (
+          <div style={{ flexShrink: 0, padding: '4px 8px' }}>
+            <SimulationPanel />
+          </div>
         )}
       </div>
 
-      <div className="panel panel-right">
+      <div className="panel panel-right" style={{ display: 'flex', flexDirection: 'column' }}>
         <DepthPanel />
 
-        {/* View mode switcher */}
-        <div style={{ marginTop: 12 }}>
-          <h3>View</h3>
+        {/* View mode switcher — FIXED at bottom */}
+        <div style={{ flexShrink: 0, borderTop: '1px solid #2a2a4a', paddingTop: 8, marginTop: 8 }}>
+          <h3 style={{ margin: '0 0 6px' }}>View</h3>
           <div style={{ display: 'flex', gap: 4 }}>
             <button
               className={`btn btn-sm ${viewMode === 'design' ? 'depth-btn active' : ''}`}

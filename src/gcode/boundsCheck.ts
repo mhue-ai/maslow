@@ -9,8 +9,8 @@ export interface BoundsResult {
   maxY: number;
 }
 
-const MASLOW_MAX_X = 1220; // 4 feet in mm
-const MASLOW_MAX_Y = 2440; // 8 feet in mm
+const MASLOW_MAX_X = 2440; // 8 feet in mm (horizontal)
+const MASLOW_MAX_Y = 1220; // 4 feet in mm (vertical)
 
 /**
  * Scan G-code for out-of-bounds moves.
