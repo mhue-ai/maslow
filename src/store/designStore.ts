@@ -19,6 +19,7 @@ interface HistoryEntry {
   outlineReliefIds: Set<string>;
   outlineReliefDepth: number;
   cutShapeIds: Set<string>;
+  cutThrough: boolean;
   cutDepth: number;
 }
 
@@ -89,7 +90,12 @@ interface DesignState {
   cutShapeIds: Set<string>;
   setCutShape: (shapeId: string, included: boolean) => void;
   clearCutShapes: () => void;
-  cutDepth: number;               // mm depth for all Cut-mode line cuts
+  // Cut Out cuts all the way through by default (that's what "the part comes
+  // free" means). When cutThrough is true the effective depth tracks the
+  // material thickness automatically; cutDepth is only used for partial cuts.
+  cutThrough: boolean;
+  setCutThrough: (v: boolean) => void;
+  cutDepth: number;               // mm depth for a PARTIAL Cut-mode cut
   setCutDepth: (mm: number) => void;
 
   // Generated G-code
@@ -143,6 +149,7 @@ function captureHistory(s: DesignState): HistoryEntry {
     outlineReliefIds: new Set(s.outlineReliefIds),
     outlineReliefDepth: s.outlineReliefDepth,
     cutShapeIds: new Set(s.cutShapeIds),
+    cutThrough: s.cutThrough,
     cutDepth: s.cutDepth,
   };
 }
@@ -370,6 +377,11 @@ export const useDesignStore = create<DesignState>((set, get) => ({
     get().pushHistory();
     set({ cutShapeIds: new Set() });
   },
+  cutThrough: true,
+  setCutThrough: (v) => {
+    get().pushHistory();
+    set({ cutThrough: v });
+  },
   cutDepth: 3,
   setCutDepth: (mm) => {
     get().pushHistory();
@@ -417,6 +429,7 @@ export const useDesignStore = create<DesignState>((set, get) => ({
         outlineReliefIds: new Set(entry.outlineReliefIds),
         outlineReliefDepth: entry.outlineReliefDepth,
         cutShapeIds: new Set(entry.cutShapeIds),
+        cutThrough: entry.cutThrough,
         cutDepth: entry.cutDepth,
         historyIndex: s.historyIndex - 1,
       };
@@ -436,6 +449,7 @@ export const useDesignStore = create<DesignState>((set, get) => ({
         outlineReliefIds: new Set(entry.outlineReliefIds),
         outlineReliefDepth: entry.outlineReliefDepth,
         cutShapeIds: new Set(entry.cutShapeIds),
+        cutThrough: entry.cutThrough,
         cutDepth: entry.cutDepth,
         historyIndex: nextIdx,
       };

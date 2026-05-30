@@ -14,6 +14,8 @@ export function CutToolSettings() {
   const config = useDesignStore((s) => s.toolConfig);
   const setConfig = useDesignStore((s) => s.setToolConfig);
   const paths = useDesignStore((s) => s.paths);
+  const cutThrough = useDesignStore((s) => s.cutThrough);
+  const setCutThrough = useDesignStore((s) => s.setCutThrough);
   const cutDepth = useDesignStore((s) => s.cutDepth);
   const setCutDepth = useDesignStore((s) => s.setCutDepth);
   const material = useDesignStore((s) => s.material);
@@ -27,7 +29,7 @@ export function CutToolSettings() {
     );
   }
 
-  const isThrough = cutDepth >= material.thickness - 0.1;
+  const isThrough = cutThrough;
 
   return (
     <div>
@@ -48,15 +50,22 @@ export function CutToolSettings() {
 
       <BitPicker />
 
-      <label data-tip="How deep to cut along each line. Reach the material thickness to cut all the way through — tabs are added automatically so parts don’t fly loose.">
-        How deep?
-        <input type="number" value={cutDepth} min={0.5} max={Math.max(material.thickness, cutDepth)} step={0.5}
-          onChange={(e) => setCutDepth(Number(e.target.value))} />
-        <span className="unit">mm</span>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '4px 0 2px' }}
+        data-tip="Cut Out means the part comes free from the sheet — so it cuts all the way through and adds holding tabs. Uncheck to cut only partway (a groove or score line instead).">
+        <input type="checkbox" checked={cutThrough} onChange={(e) => setCutThrough(e.target.checked)} style={{ margin: 0 }} />
+        Cut all the way through
       </label>
+      {!cutThrough && (
+        <label data-tip="How deep the partial cut goes (a groove / score line, not through).">
+          Depth
+          <input type="number" value={cutDepth} min={0.5} max={Math.max(0.5, material.thickness - 0.5)} step={0.5}
+            onChange={(e) => setCutDepth(Number(e.target.value))} />
+          <span className="unit">mm</span>
+        </label>
+      )}
       <p style={{ fontSize: 10, color: isThrough ? '#ffaa44' : '#666', margin: '2px 0 0' }}>
         {isThrough
-          ? `Cuts through all ${material.thickness}mm — tabs hold the parts.`
+          ? `Cuts through all ${material.thickness}mm — tabs hold the parts until you remove them.`
           : `Grooves ${cutDepth}mm deep (material is ${material.thickness}mm thick).`}
       </p>
 

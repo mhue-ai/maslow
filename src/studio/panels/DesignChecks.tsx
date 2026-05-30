@@ -28,6 +28,7 @@ export function DesignChecks() {
   const shapeLevels = useDesignStore((s) => s.shapeLevels);
   const profileCutId = useDesignStore((s) => s.profileCutId);
   const cutShapeIds = useDesignStore((s) => s.cutShapeIds);
+  const cutThrough = useDesignStore((s) => s.cutThrough);
   const cutDepth = useDesignStore((s) => s.cutDepth);
   const setToolConfig = useDesignStore((s) => s.setToolConfig);
 
@@ -81,7 +82,7 @@ export function DesignChecks() {
     const hasThrough =
       !!profileCutId ||
       Array.from(shapeLevels.values()).some((l) => l.level >= material.thickness) ||
-      (cutShapeIds.size > 0 && cutDepth >= material.thickness - 0.1);
+      (cutShapeIds.size > 0 && (cutThrough || cutDepth >= material.thickness - 0.1));
     if (hasThrough && toolConfig.tabCount === 0) {
       out.push({
         level: 'warn',
@@ -92,7 +93,7 @@ export function DesignChecks() {
 
     if (out.length === 0) out.push({ level: 'ok', text: 'Looks good — fits the material, no obvious problems.' });
     return out;
-  }, [paths, material, toolConfig, svgBounds, svgTransformOverride, shapeLevels, profileCutId, cutShapeIds, cutDepth, setToolConfig]);
+  }, [paths, material, toolConfig, svgBounds, svgTransformOverride, shapeLevels, profileCutId, cutShapeIds, cutThrough, cutDepth, setToolConfig]);
 
   if (checks.length === 0) return null;
 

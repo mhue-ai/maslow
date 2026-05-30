@@ -27,6 +27,7 @@ interface ProjectFile {
   outlineReliefIds?: string[];
   outlineReliefDepth?: number;
   cutShapeIds?: string[];
+  cutThrough?: boolean;
   cutDepth?: number;
 }
 
@@ -47,6 +48,7 @@ export async function saveProject(name: string): Promise<void> {
     outlineReliefIds: Array.from(state.outlineReliefIds),
     outlineReliefDepth: state.outlineReliefDepth,
     cutShapeIds: Array.from(state.cutShapeIds),
+    cutThrough: state.cutThrough,
     cutDepth: state.cutDepth,
   };
 
@@ -125,6 +127,7 @@ export async function loadProject(file: File): Promise<string | null> {
     outlineReliefIds: new Set(project.outlineReliefIds ?? []),
     outlineReliefDepth: project.outlineReliefDepth ?? store.outlineReliefDepth,
     cutShapeIds: new Set(project.cutShapeIds ?? []),
+    cutThrough: project.cutThrough ?? store.cutThrough,
     cutDepth: project.cutDepth ?? store.cutDepth,
     designCopies: project.designCopies ?? [],
   });

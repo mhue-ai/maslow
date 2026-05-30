@@ -16,6 +16,7 @@ import { useUiStore } from '../store/uiStore';
 export function CutExportPanel() {
   const paths = useDesignStore((s) => s.paths);
   const cutShapeIds = useDesignStore((s) => s.cutShapeIds);
+  const cutThrough = useDesignStore((s) => s.cutThrough);
   const cutDepth = useDesignStore((s) => s.cutDepth);
   const toolConfig = useDesignStore((s) => s.toolConfig);
   const material = useDesignStore((s) => s.material);
@@ -57,8 +58,12 @@ export function CutExportPanel() {
         svgBounds, material, toolConfig.workOrigin, svgTransformOverride, toolConfig.edgeClearance
       );
 
+      // "Cut all the way through" tracks the material thickness; otherwise use
+      // the partial depth. generateCutGcode auto-engages tabs once depth reaches
+      // thickness.
+      const effectiveDepth = cutThrough ? material.thickness : cutDepth;
       const gen = await generateCutGcode(
-        paths, cutShapeIds, cutDepth, toolConfig, transform,
+        paths, cutShapeIds, effectiveDepth, toolConfig, transform,
         material.thickness, designCopies
       );
 
@@ -72,7 +77,7 @@ export function CutExportPanel() {
     }
   };
 
-  const isThrough = cutDepth >= material.thickness - 0.1;
+  const isThrough = cutThrough;
 
   return (
     <div>
