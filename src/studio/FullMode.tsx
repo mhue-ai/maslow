@@ -12,7 +12,19 @@ import { saveProject, loadProject } from '../store/projectIO';
 
 type ViewMode = 'design' | '3d';
 
-export function DesignStudio() {
+/**
+ * Full mode — one of the three top-level design modes.
+ *
+ *   Full    — pocket-fill relief (full kerf clearing).   ← THIS FILE
+ *   Outline — relief outlines only, fill cleared by hand. See src/outline/OutlineMode.tsx.
+ *   Cut     — bit follows the line, no offset.            See src/cut/CutMode.tsx.
+ *
+ * The `src/studio/` directory holds shared design-surface infrastructure
+ * (MaterialPanel, SvgImportPanel, SvgPreview2D, etc.) used by ALL three
+ * modes — the "studio" name is legacy and no longer corresponds to a single
+ * mode.
+ */
+export function FullMode() {
   const undo = useDesignStore((s) => s.undo);
   const redo = useDesignStore((s) => s.redo);
   const historyIndex = useDesignStore((s) => s.historyIndex);
@@ -47,7 +59,7 @@ export function DesignStudio() {
   };
 
   return (
-    <div className="design-studio">
+    <div className="design-mode">
       <div className="panel panel-left">
         {/* Project + Undo/Redo bar */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>

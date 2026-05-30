@@ -16,8 +16,10 @@ interface HistoryEntry {
   svgTransformOverride: SvgTransformOverride;
   operationOrder: string[];
   designCopies: DesignCopy[];
-  liteReliefIds: Set<string>;
-  liteReliefDepth: number;
+  outlineReliefIds: Set<string>;
+  outlineReliefDepth: number;
+  cutShapeIds: Set<string>;
+  cutDepth: number;
 }
 
 interface DesignState {
@@ -64,17 +66,29 @@ interface DesignState {
   profileCutId: string | null;
   setProfileCutId: (id: string | null) => void;
 
-  // ── Design Light mode state ──
-  // Shapes marked here become "relief" regions in Light mode: their outlines
+  // ── Outline mode state ──
+  // Shapes marked here become "relief" regions in Outline mode: their outlines
   // are cut (with bit offset INSIDE) at the relief depth. Any Keep shape
   // geometrically inside a Relief is auto-detected as an Island and gets
   // outlined with bit offset OUTSIDE so it stays at full size. NO pocket fill
   // is generated — the user clears the waste between outlines manually.
-  liteReliefIds: Set<string>;
-  setLiteRelief: (shapeId: string, isRelief: boolean) => void;
-  clearLiteReliefs: () => void;
-  liteReliefDepth: number;        // mm depth for all Light-mode outline cuts
-  setLiteReliefDepth: (mm: number) => void;
+  outlineReliefIds: Set<string>;
+  setOutlineRelief: (shapeId: string, isRelief: boolean) => void;
+  clearOutlineReliefs: () => void;
+  outlineReliefDepth: number;     // mm depth for all Outline-mode outline cuts
+  setOutlineReliefDepth: (mm: number) => void;
+
+  // ── Cut mode state ──
+  // Cut mode is the simplest of the three design modes: the bit follows each
+  // selected path AS DRAWN, no kerf offset (no inside/outside). One global
+  // depth governs every cut; auto-tabs kick in when `cutDepth` reaches the
+  // material thickness (through-cut). Bit diameter still comes from
+  // toolConfig — it determines how wide the slot ends up.
+  cutShapeIds: Set<string>;
+  setCutShape: (shapeId: string, included: boolean) => void;
+  clearCutShapes: () => void;
+  cutDepth: number;               // mm depth for all Cut-mode line cuts
+  setCutDepth: (mm: number) => void;
 
   // Generated G-code
   gcode: string | null;
@@ -124,8 +138,10 @@ function captureHistory(s: DesignState): HistoryEntry {
     svgTransformOverride: { ...s.svgTransformOverride },
     operationOrder: [...s.operationOrder],
     designCopies: s.designCopies.map((c) => ({ ...c })),
-    liteReliefIds: new Set(s.liteReliefIds),
-    liteReliefDepth: s.liteReliefDepth,
+    outlineReliefIds: new Set(s.outlineReliefIds),
+    outlineReliefDepth: s.outlineReliefDepth,
+    cutShapeIds: new Set(s.cutShapeIds),
+    cutDepth: s.cutDepth,
   };
 }
 
@@ -191,9 +207,11 @@ export const useDesignStore = create<DesignState>((set, get) => ({
       operationOrder: order,
       shapeLevels: levels,
       profileCutId: profileId,
-      // Clear Light-mode reliefs on every new SVG so stale IDs from a prior
+      // Clear Outline-mode reliefs on every new SVG so stale IDs from a prior
       // file don't carry over.
-      liteReliefIds: new Set(),
+      outlineReliefIds: new Set(),
+      // Same for Cut-mode shape selection — fresh SVG, fresh selection.
+      cutShapeIds: new Set(),
     });
   },
   selectedPathId: null,
@@ -297,25 +315,46 @@ export const useDesignStore = create<DesignState>((set, get) => ({
     return { profileCutId: id, operationOrder: newOrder };
   }),
 
-  // ── Design Light mode ──
-  liteReliefIds: new Set(),
-  setLiteRelief: (shapeId, isRelief) => {
+  // ── Outline mode ──
+  outlineReliefIds: new Set(),
+  setOutlineRelief: (shapeId, isRelief) => {
     get().pushHistory();
     set((s) => {
-      const next = new Set(s.liteReliefIds);
+      const next = new Set(s.outlineReliefIds);
       if (isRelief) next.add(shapeId);
       else next.delete(shapeId);
-      return { liteReliefIds: next };
+      return { outlineReliefIds: next };
     });
   },
-  clearLiteReliefs: () => {
+  clearOutlineReliefs: () => {
     get().pushHistory();
-    set({ liteReliefIds: new Set() });
+    set({ outlineReliefIds: new Set() });
   },
-  liteReliefDepth: 3,
-  setLiteReliefDepth: (mm) => {
+  outlineReliefDepth: 3,
+  setOutlineReliefDepth: (mm) => {
     get().pushHistory();
-    set({ liteReliefDepth: Math.max(0.5, mm) });
+    set({ outlineReliefDepth: Math.max(0.5, mm) });
+  },
+
+  // ── Cut mode ──
+  cutShapeIds: new Set(),
+  setCutShape: (shapeId, included) => {
+    get().pushHistory();
+    set((s) => {
+      const next = new Set(s.cutShapeIds);
+      if (included) next.add(shapeId);
+      else next.delete(shapeId);
+      return { cutShapeIds: next };
+    });
+  },
+  clearCutShapes: () => {
+    get().pushHistory();
+    set({ cutShapeIds: new Set() });
+  },
+  cutDepth: 3,
+  setCutDepth: (mm) => {
+    get().pushHistory();
+    set({ cutDepth: Math.max(0.5, mm) });
   },
 
   showCutPreview: false,
@@ -356,8 +395,10 @@ export const useDesignStore = create<DesignState>((set, get) => ({
         svgTransformOverride: { ...entry.svgTransformOverride },
         operationOrder: [...entry.operationOrder],
         designCopies: entry.designCopies.map((c) => ({ ...c })),
-        liteReliefIds: new Set(entry.liteReliefIds),
-        liteReliefDepth: entry.liteReliefDepth,
+        outlineReliefIds: new Set(entry.outlineReliefIds),
+        outlineReliefDepth: entry.outlineReliefDepth,
+        cutShapeIds: new Set(entry.cutShapeIds),
+        cutDepth: entry.cutDepth,
         historyIndex: s.historyIndex - 1,
       };
     }),
@@ -373,8 +414,10 @@ export const useDesignStore = create<DesignState>((set, get) => ({
         svgTransformOverride: { ...entry.svgTransformOverride },
         operationOrder: [...entry.operationOrder],
         designCopies: entry.designCopies.map((c) => ({ ...c })),
-        liteReliefIds: new Set(entry.liteReliefIds),
-        liteReliefDepth: entry.liteReliefDepth,
+        outlineReliefIds: new Set(entry.outlineReliefIds),
+        outlineReliefDepth: entry.outlineReliefDepth,
+        cutShapeIds: new Set(entry.cutShapeIds),
+        cutDepth: entry.cutDepth,
         historyIndex: nextIdx,
       };
     }),

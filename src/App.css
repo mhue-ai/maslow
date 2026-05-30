@@ -60,8 +60,8 @@
   overflow: hidden;
 }
 
-/* Design Studio Layout */
-.design-studio {
+/* Design mode layout — shared by Full / Outline / Cut */
+.design-mode {
   display: flex;
   height: 100%;
 }

@@ -5,10 +5,10 @@ import { useDesignStore } from '../store/designStore';
 import { gcodeToSegments } from '../gcode/gcodeToPoints';
 
 /**
- * Full-screen G-code visualizer — top-level view alongside Design Studio and
- * Machine Control. Shows the generated toolpath on a neutral 3D material plate
- * with animated playback controls. Also supports loading G-code from a file
- * independently of the Design Studio.
+ * Full-screen G-code visualizer — top-level view alongside the Full / Outline /
+ * Cut design modes and Machine Control. Shows the generated toolpath on a
+ * neutral 3D material plate with animated playback controls. Also supports
+ * loading G-code from a file independently of the design modes.
  */
 export function Visualizer() {
   const gcode = useDesignStore((s) => s.gcode);
@@ -220,7 +220,7 @@ export function Visualizer() {
             <div style={{ fontSize: 48, opacity: 0.15 }}>▶</div>
             <div style={{ fontSize: 18, color: '#aaa', fontWeight: 500 }}>No G-Code to Visualize</div>
             <div style={{ fontSize: 13, color: '#666', maxWidth: 460, textAlign: 'center', lineHeight: 1.6 }}>
-              Generate G-Code in the <strong style={{ color: '#aaa' }}>Design Studio</strong> tab,
+              Generate G-Code in the <strong style={{ color: '#aaa' }}>Full</strong>, <strong style={{ color: '#aaa' }}>Outline</strong>, or <strong style={{ color: '#aaa' }}>Cut</strong> tab,
               or load an existing <code style={{ color: '#88bbff' }}>.nc</code> /{' '}
               <code style={{ color: '#88bbff' }}>.gcode</code> file using the button above.
             </div>

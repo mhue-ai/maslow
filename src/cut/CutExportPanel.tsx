@@ -1,42 +1,39 @@
 import { useState } from 'react';
 import { useDesignStore } from '../store/designStore';
-import { generateLiteGcode } from '../gcode/liteToolpath';
+import { generateCutGcode } from '../gcode/cutToolpath';
 import type { GenerationResult } from '../gcode/gcodeGenerator';
 import { computeSvgTransform } from '../svg/svgScaler';
 import { checkBounds, type BoundsResult } from '../gcode/boundsCheck';
 import { downloadGcode } from '../gcode/gcodeWriter';
 
 /**
- * Export panel — Design Light variant.
+ * Export panel — Cut mode.
  *
- * Calls `generateLiteGcode` (outlines only, no fill) instead of the Studio
- * `generateGcode`. The Studio panel is unchanged.
+ * Calls `generateCutGcode` (bit follows the line, no offset) and downloads
+ * `maslow-cut.nc`. Mirrors the Outline/Full export panels for consistent UX.
  */
-export function LiteGcodeExportPanel() {
+export function CutExportPanel() {
   const paths = useDesignStore((s) => s.paths);
-  const liteReliefIds = useDesignStore((s) => s.liteReliefIds);
-  const liteReliefDepth = useDesignStore((s) => s.liteReliefDepth);
+  const cutShapeIds = useDesignStore((s) => s.cutShapeIds);
+  const cutDepth = useDesignStore((s) => s.cutDepth);
   const toolConfig = useDesignStore((s) => s.toolConfig);
   const material = useDesignStore((s) => s.material);
   const svgBounds = useDesignStore((s) => s.svgBounds);
   const svgTransformOverride = useDesignStore((s) => s.svgTransformOverride);
   const designCopies = useDesignStore((s) => s.designCopies);
-  const profileCutId = useDesignStore((s) => s.profileCutId);
   const setGcode = useDesignStore((s) => s.setGcode);
 
   const [result, setResult] = useState<GenerationResult | null>(null);
   const [bounds, setBounds] = useState<BoundsResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const hasReliefs = liteReliefIds.size > 0;
-  const hasProfile = !!profileCutId;
-  const hasAnyCut = hasReliefs || hasProfile;
+  const hasSelection = cutShapeIds.size > 0;
 
   if (paths.length === 0) {
     return (
       <div>
         <h3><span className="step">4</span> G-Code</h3>
-        <p style={{ fontSize: 11, color: '#555' }}>Import SVG and mark relief shapes first</p>
+        <p style={{ fontSize: 11, color: '#555' }}>Import SVG and select shapes to cut</p>
       </div>
     );
   }
@@ -49,12 +46,8 @@ export function LiteGcodeExportPanel() {
       setError('No SVG bounds available');
       return;
     }
-    if (!hasAnyCut) {
-      setError('Mark at least one shape as Relieve, or pick an outer profile, before generating.');
-      return;
-    }
-    if (liteReliefDepth >= material.thickness) {
-      setError(`Relief depth (${liteReliefDepth}mm) must be less than material thickness (${material.thickness}mm).`);
+    if (!hasSelection) {
+      setError('Select at least one shape to cut before generating.');
       return;
     }
 
@@ -63,9 +56,9 @@ export function LiteGcodeExportPanel() {
         svgBounds, material, toolConfig.workOrigin, svgTransformOverride, toolConfig.edgeClearance
       );
 
-      const gen = await generateLiteGcode(
-        paths, liteReliefIds, liteReliefDepth, toolConfig, transform,
-        material.thickness, profileCutId, designCopies
+      const gen = await generateCutGcode(
+        paths, cutShapeIds, cutDepth, toolConfig, transform,
+        material.thickness, designCopies
       );
 
       setResult(gen);
@@ -78,6 +71,8 @@ export function LiteGcodeExportPanel() {
     }
   };
 
+  const isThrough = cutDepth >= material.thickness - 0.1;
+
   return (
     <div>
       <h3><span className="step">4</span> G-Code</h3>
@@ -87,10 +82,10 @@ export function LiteGcodeExportPanel() {
       <button
         className="btn btn-primary"
         onClick={handleGenerate}
-        disabled={!hasAnyCut}
+        disabled={!hasSelection}
         style={{ width: '100%', marginBottom: 8 }}
       >
-        Generate Outline G-Code
+        Generate Cut G-Code
       </button>
 
       {bounds && !bounds.inBounds && (
@@ -113,10 +108,12 @@ export function LiteGcodeExportPanel() {
           <div>{result.stats.operationCount} operations</div>
           <div>~{result.stats.estimatedTimeMin} min estimated</div>
           <div style={{ fontSize: 10, color: '#666', marginTop: 4 }}>
-            Outlines only — clear the waste between cuts by hand before the profile release.
+            {isThrough
+              ? 'Through-cut — tabs hold each piece until you remove them by hand.'
+              : 'Partial-depth cuts — leaves grooves at the chosen depth.'}
           </div>
 
-          <button className="btn" onClick={() => result && downloadGcode(result.lines, 'maslow-lite.nc')} style={{ width: '100%', marginTop: 8 }}>
+          <button className="btn" onClick={() => result && downloadGcode(result.lines, 'maslow-cut.nc')} style={{ width: '100%', marginTop: 8 }}>
             Download .nc
           </button>
         </div>

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useDesignStore } from '../store/designStore';
 import { computeSvgTransform } from '../svg/svgScaler';
-import { detectAutoIslands } from '../gcode/liteToolpath';
+import { detectAutoIslands } from '../gcode/outlineToolpath';
 
 /**
- * Shapes — Design Light variant (v2).
+ * Shapes — Outline mode.
  *
  * Mental model:
  *   - Each shape is either RELIEVE (waste — gets lowered to the relief
@@ -18,13 +18,13 @@ import { detectAutoIslands } from '../gcode/liteToolpath';
  * No fill, no pocketing — the user clears the waste between outlines by
  * hand (chisel, palm router, etc).
  */
-export function ShapesLight() {
+export function OutlineShapes() {
   const paths = useDesignStore((s) => s.paths);
-  const liteReliefIds = useDesignStore((s) => s.liteReliefIds);
-  const setLiteRelief = useDesignStore((s) => s.setLiteRelief);
-  const clearLiteReliefs = useDesignStore((s) => s.clearLiteReliefs);
-  const liteReliefDepth = useDesignStore((s) => s.liteReliefDepth);
-  const setLiteReliefDepth = useDesignStore((s) => s.setLiteReliefDepth);
+  const outlineReliefIds = useDesignStore((s) => s.outlineReliefIds);
+  const setOutlineRelief = useDesignStore((s) => s.setOutlineRelief);
+  const clearOutlineReliefs = useDesignStore((s) => s.clearOutlineReliefs);
+  const outlineReliefDepth = useDesignStore((s) => s.outlineReliefDepth);
+  const setOutlineReliefDepth = useDesignStore((s) => s.setOutlineReliefDepth);
   const profileCutId = useDesignStore((s) => s.profileCutId);
   const setProfileCutId = useDesignStore((s) => s.setProfileCutId);
   const selectedPathId = useDesignStore((s) => s.selectedPathId);
@@ -45,11 +45,11 @@ export function ShapesLight() {
     const transform = computeSvgTransform(
       svgBounds, material, toolConfig.workOrigin, svgTransformOverride, toolConfig.edgeClearance
     );
-    detectAutoIslands(paths, liteReliefIds, transform, profileCutId).then((set) => {
+    detectAutoIslands(paths, outlineReliefIds, transform, profileCutId).then((set) => {
       if (!cancelled) setAutoIslands(set);
     });
     return () => { cancelled = true; };
-  }, [paths, liteReliefIds, svgBounds, material, toolConfig.workOrigin, toolConfig.edgeClearance, svgTransformOverride, profileCutId]);
+  }, [paths, outlineReliefIds, svgBounds, material, toolConfig.workOrigin, toolConfig.edgeClearance, svgTransformOverride, profileCutId]);
 
   if (paths.length === 0) {
     return (
@@ -60,7 +60,7 @@ export function ShapesLight() {
     );
   }
 
-  const reliefCount = paths.filter((p) => liteReliefIds.has(p.data.id)).length;
+  const reliefCount = paths.filter((p) => outlineReliefIds.has(p.data.id)).length;
   const islandCount = autoIslands.size;
   const keepCount = paths.length - reliefCount - (profileCutId ? 1 : 0);
 
@@ -76,7 +76,7 @@ export function ShapesLight() {
         diameter (how much kerf-compensation offset is applied around each
         outline). Surface them side-by-side at the top of the shapes panel so
         the user doesn't have to bounce to Tool Settings to tune them. They
-        stay synced with the same fields in ToolSettingsLight via the store.
+        stay synced with the same fields in OutlineToolSettings via the store.
       */}
       <div style={{
         display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6,
@@ -90,11 +90,11 @@ export function ShapesLight() {
           Relief depth
           <input
             type="number"
-            value={liteReliefDepth}
+            value={outlineReliefDepth}
             min={0.5}
             max={material.thickness - 0.5}
             step={0.5}
-            onChange={(e) => setLiteReliefDepth(Number(e.target.value))}
+            onChange={(e) => setOutlineReliefDepth(Number(e.target.value))}
           />
           <span className="unit">mm</span>
         </label>
@@ -116,7 +116,7 @@ export function ShapesLight() {
       </div>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-        <button className="btn btn-sm" onClick={clearLiteReliefs} style={{ flex: 1 }}>
+        <button className="btn btn-sm" onClick={clearOutlineReliefs} style={{ flex: 1 }}>
           Clear All Reliefs
         </button>
       </div>
@@ -135,7 +135,7 @@ export function ShapesLight() {
       }}>
         {paths.map((p) => {
           const id = p.data.id;
-          const isRelief = liteReliefIds.has(id);
+          const isRelief = outlineReliefIds.has(id);
           const isProfile = id === profileCutId;
           const isIsland = autoIslands.has(id);
           const isSelected = id === selectedPathId;
@@ -165,7 +165,7 @@ export function ShapesLight() {
                 type="checkbox"
                 checked={isRelief}
                 disabled={reliefDisabled}
-                onChange={(e) => { e.stopPropagation(); setLiteRelief(id, e.target.checked); }}
+                onChange={(e) => { e.stopPropagation(); setOutlineRelief(id, e.target.checked); }}
                 onClick={(e) => e.stopPropagation()}
                 title="Mark as relief — cut outline at relief depth, leave waste for manual removal"
               />
@@ -204,7 +204,7 @@ export function ShapesLight() {
                   checked={isProfile}
                   onChange={() => {
                     // Selecting a profile clears any relief flag on the same shape.
-                    if (isRelief) setLiteRelief(id, false);
+                    if (isRelief) setOutlineRelief(id, false);
                     setProfileCutId(id);
                   }}
                   style={{ margin: 0 }}
@@ -217,7 +217,7 @@ export function ShapesLight() {
       </div>
 
       <p style={{ fontSize: 10, color: '#666', marginTop: 6, marginBottom: 0 }}>
-        All outlines cut to <strong>{liteReliefDepth} mm</strong>.
+        All outlines cut to <strong>{outlineReliefDepth} mm</strong>.
         {profileCutId && ' Profile released through the full thickness with tabs.'}
       </p>
     </div>

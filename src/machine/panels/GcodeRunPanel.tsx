@@ -419,7 +419,7 @@ export function GcodeRunPanel() {
       )}
 
       {!gcode ? (
-        <p style={{ fontSize: 12, color: '#555' }}>Generate G-code in the Design Studio first.</p>
+        <p style={{ fontSize: 12, color: '#555' }}>Generate G-code in the Full, Outline, or Cut tab first.</p>
       ) : (
         <>
           {/* File info */}

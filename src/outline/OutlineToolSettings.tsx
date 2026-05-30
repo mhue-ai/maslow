@@ -2,14 +2,14 @@ import { useDesignStore } from '../store/designStore';
 import type { WorkOrigin } from '../types/design';
 
 /**
- * Tool Settings — Design Light variant.
+ * Tool Settings — Outline mode.
  *
- * Light mode emits OUTLINES ONLY (relief boundaries + auto-island outlines +
+ * Outline mode emits OUTLINES ONLY (relief boundaries + auto-island outlines +
  * optional outer profile). No pocketing, so we hide every pocket-specific
  * knob (fillStrategy / stepover / stockToLeave / finishPass). Tabs are only
  * meaningful when an outer Profile through-cut is set.
  */
-export function ToolSettingsLight() {
+export function OutlineToolSettings() {
   const config = useDesignStore((s) => s.toolConfig);
   const setConfig = useDesignStore((s) => s.setToolConfig);
   const paths = useDesignStore((s) => s.paths);

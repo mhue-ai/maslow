@@ -1,5 +1,10 @@
 /**
- * Design Light toolpath — OUTLINES ONLY, no fill.
+ * Outline-mode toolpath — OUTLINES ONLY, no fill.
+ *
+ * One of three design modes: Full (pocket clearing) | Outline (THIS FILE) |
+ * Cut (bit follows the line, no offset). Outline mode is the middle ground —
+ * you get clean kerf-compensated boundaries around each relief and each
+ * island, and you clear the waste between them by hand.
  *
  * Model:
  *   - User marks shapes as RELIEF (waste / lowered region).
@@ -20,7 +25,7 @@
  * removes it manually (chisel, router, palm sander, etc).
  *
  * Z-level scheduling is preserved (shallow → deep across all outlines) to
- * keep sled support consistent across the workpiece, matching the Studio
+ * keep sled support consistent across the workpiece, matching the Full-mode
  * generator's strategy.
  */
 
@@ -45,7 +50,7 @@ interface OutlineJob {
   geom: ProfileGeometry;
 }
 
-async function generateLiteInstance(
+async function generateOutlineInstance(
   paths: ConvertedPath[],
   reliefIds: Set<string>,
   reliefDepth: number,
@@ -171,12 +176,12 @@ async function generateLiteInstance(
 }
 
 /**
- * Top-level Design Light G-code generator.
+ * Top-level Outline-mode G-code generator.
  *
  * Returns the same GenerationResult shape as `generateGcode` so the export
  * panel can render stats the same way.
  */
-export async function generateLiteGcode(
+export async function generateOutlineGcode(
   paths: ConvertedPath[],
   reliefIds: Set<string>,
   reliefDepth: number,
@@ -192,8 +197,8 @@ export async function generateLiteGcode(
   lines.push(...gcodeHeader(toolConfig.rpm));
 
   lines.push('');
-  lines.push('; ====== Primary Instance (Design Light — outlines only) ======');
-  const primary = await generateLiteInstance(
+  lines.push('; ====== Primary Instance (Outline mode — outlines only) ======');
+  const primary = await generateOutlineInstance(
     paths, reliefIds, reliefDepth, toolConfig, transform,
     materialThickness, profileCutId
   );
@@ -205,7 +210,7 @@ export async function generateLiteGcode(
     lines.push('');
     lines.push(`; ====== Copy ${i + 1} (offset ${copy.offsetX}, ${copy.offsetY}) ======`);
     // eslint-disable-next-line no-await-in-loop
-    const inst = await generateLiteInstance(
+    const inst = await generateOutlineInstance(
       paths, reliefIds, reliefDepth, toolConfig, transform,
       materialThickness, profileCutId, { x: copy.offsetX, y: copy.offsetY }
     );

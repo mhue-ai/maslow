@@ -3,22 +3,25 @@ import { SvgPreview2D } from '../studio/viewport/SvgPreview2D';
 import { MaterialPanel } from '../studio/panels/MaterialPanel';
 import { SvgImportPanel } from '../studio/panels/SvgImportPanel';
 import { SvgTransformPanel } from '../studio/panels/SvgTransformPanel';
-import { LiteGcodeExportPanel } from './LiteGcodeExportPanel';
-import { ToolSettingsLight } from './ToolSettingsLight';
-import { ShapesLight } from './ShapesLight';
+import { CutExportPanel } from './CutExportPanel';
+import { CutToolSettings } from './CutToolSettings';
+import { CutShapes } from './CutShapes';
 import { useDesignStore } from '../store/designStore';
 import { saveProject, loadProject } from '../store/projectIO';
 
 /**
- * Design Light — simplified cut-only mode.
+ * Cut mode — one of the three top-level design modes.
  *
- * Every shape is either CUT (full-thickness through the material) or SKIP.
- * No pockets, no reliefs, no depth-per-shape. One shape is the PROFILE
- * (outer release cut, last in the job, cut with tabs); the rest are
- * internal through-cuts. The full Design Studio is still available for
- * users who need relief / pocket work.
+ *   Full    — pocket-fill relief (full kerf clearing).     See src/studio/FullMode.tsx.
+ *   Outline — relief outlines only, fill cleared by hand.  See src/outline/OutlineMode.tsx.
+ *   Cut     — bit follows the line, no offset.              ← THIS FILE
+ *
+ * Cut mode is the simplest of the three: pick which shapes to cut, set a
+ * global tool width (bit diameter) and tool depth, and the bit traces each
+ * selected path AS DRAWN. Through-cuts auto-engage tabs when tool depth
+ * reaches material thickness.
  */
-export function DesignLight() {
+export function CutMode() {
   const undo = useDesignStore((s) => s.undo);
   const redo = useDesignStore((s) => s.redo);
   const historyIndex = useDesignStore((s) => s.historyIndex);
@@ -43,7 +46,7 @@ export function DesignLight() {
   };
 
   return (
-    <div className="design-studio">
+    <div className="design-mode">
       <div className="panel panel-left">
         {/* Project + Undo/Redo bar */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
@@ -61,17 +64,17 @@ export function DesignLight() {
           marginBottom: 10, padding: '6px 8px', background: '#1a2a4a',
           border: '1px solid #2a4a7a', borderRadius: 4, fontSize: 10, color: '#88bbff',
         }}>
-          <strong>Design Light</strong> — outline-only relief mode. Mark shapes as
-          <strong style={{ color: '#ff6666' }}> Relieve</strong> and the toolpath cuts
-          the outline of each relief plus any island inside it. Clear the waste between
-          outlines by hand. For pocket-filled reliefs, use <strong>Design Studio</strong>.
+          <strong>Cut mode</strong> — bit follows the line, no kerf offset. Pick
+          which shapes to cut, set tool width + tool depth, and the bit traces
+          each selected path AS DRAWN. For kerf-compensated outlines use
+          <strong> Outline</strong>; for pocket-cleared reliefs use <strong>Full</strong>.
         </div>
 
         <MaterialPanel />
         <SvgImportPanel />
         <SvgTransformPanel />
-        <ToolSettingsLight />
-        <LiteGcodeExportPanel />
+        <CutToolSettings />
+        <CutExportPanel />
       </div>
 
       {/* Center viewport — 2D SVG preview */}
@@ -80,7 +83,7 @@ export function DesignLight() {
       </div>
 
       <div className="panel panel-right" style={{ display: 'flex', flexDirection: 'column' }}>
-        <ShapesLight />
+        <CutShapes />
 
         {gcode && (
           <div style={{ flexShrink: 0, borderTop: '1px solid #2a2a4a', paddingTop: 8, marginTop: 8 }}>

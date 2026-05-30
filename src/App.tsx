@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { DesignStudio } from './studio/DesignStudio';
-import { DesignLight } from './designLight/DesignLight';
+import { FullMode } from './studio/FullMode';
+import { OutlineMode } from './outline/OutlineMode';
+import { CutMode } from './cut/CutMode';
 import { Visualizer } from './visualizer/Visualizer';
 import { MachineControl } from './machine/MachineControl';
 import { OnboardingModal, resetOnboarding } from './components/OnboardingModal';
@@ -9,10 +10,16 @@ import { useMachineStore } from './store/machineStore';
 import { send } from './comms/maslowSocket';
 import './App.css';
 
-type Tab = 'design' | 'design-light' | 'visualizer' | 'machine';
+// Three design modes:
+//   - 'full'    — Pocket-clearing relief mode (most powerful)
+//   - 'outline' — Relief outlines only, fill cleared by hand
+//   - 'cut'     — Bit follows the line, no offset
+// Plus 'visualizer' and 'machine' for preview / machine control.
+type Tab = 'full' | 'outline' | 'cut' | 'visualizer' | 'machine';
+const DESIGN_TABS: ReadonlyArray<Tab> = ['full', 'outline', 'cut'];
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>('design');
+  const [tab, setTab] = useState<Tab>('full');
   const connection = useMachineStore((s) => s.connection);
   const gcode = useDesignStore((s) => s.gcode);
   const undo = useDesignStore((s) => s.undo);
@@ -57,17 +64,25 @@ export default function App() {
         <div className="app-brand">Maslow CNC Studio</div>
         <nav className="app-tabs">
           <button
-            className={`tab-btn ${tab === 'design' ? 'active' : ''}`}
-            onClick={() => setTab('design')}
+            className={`tab-btn ${tab === 'full' ? 'active' : ''}`}
+            onClick={() => setTab('full')}
+            title="Full pocket-clearing relief mode — most powerful"
           >
-            Design Studio
+            Full
           </button>
           <button
-            className={`tab-btn ${tab === 'design-light' ? 'active' : ''}`}
-            onClick={() => setTab('design-light')}
-            title="Simplified cut-only mode — every shape is cut through the material"
+            className={`tab-btn ${tab === 'outline' ? 'active' : ''}`}
+            onClick={() => setTab('outline')}
+            title="Relief outlines only — clear the waste between cuts by hand"
           >
-            Design Light
+            Outline
+          </button>
+          <button
+            className={`tab-btn ${tab === 'cut' ? 'active' : ''}`}
+            onClick={() => setTab('cut')}
+            title="Bit follows the line — straight cuts, no kerf compensation"
+          >
+            Cut
           </button>
           <button
             className={`tab-btn ${tab === 'visualizer' ? 'active' : ''}`}
@@ -85,7 +100,7 @@ export default function App() {
         </nav>
 
         {/* Floating E-stop in header when connected */}
-        {connection === 'connected' && (tab === 'design' || tab === 'design-light') && (
+        {connection === 'connected' && DESIGN_TABS.includes(tab) && (
           <button
             onClick={handleEstop}
             style={{
@@ -110,7 +125,7 @@ export default function App() {
           onClick={resetOnboarding}
           title="Show welcome tour"
           style={{
-            marginLeft: connection === 'connected' && (tab === 'design' || tab === 'design-light') ? 8 : 'auto',
+            marginLeft: connection === 'connected' && DESIGN_TABS.includes(tab) ? 8 : 'auto',
             width: 28,
             height: 28,
             borderRadius: '50%',
@@ -126,8 +141,9 @@ export default function App() {
         </button>
       </header>
       <main className="app-main">
-        {tab === 'design' && <DesignStudio />}
-        {tab === 'design-light' && <DesignLight />}
+        {tab === 'full' && <FullMode />}
+        {tab === 'outline' && <OutlineMode />}
+        {tab === 'cut' && <CutMode />}
         {tab === 'visualizer' && <Visualizer />}
         {tab === 'machine' && <MachineControl />}
       </main>

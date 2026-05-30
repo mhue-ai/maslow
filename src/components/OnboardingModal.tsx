@@ -14,8 +14,8 @@ const STEPS: Step[] = [
     body: 'Design, simulate, and cut — all in one place. This quick tour covers the essentials. You can skip at any time and revisit via the Help menu.',
   },
   {
-    title: '1. Design Studio',
-    body: 'Import an SVG, set a material size, and click shapes to assign cut depths. The preview shows a wood-color depth gradient so you can see the finished piece before cutting.',
+    title: '1. Pick a design mode',
+    body: 'Three top-level modes: Full (pocket-clear reliefs with full kerf clearing), Outline (cut just the relief boundaries and clear waste by hand), Cut (bit follows the line — straight engraves and through-cuts). Import an SVG and pick the mode that fits the job.',
     highlight: 'design',
   },
   {
