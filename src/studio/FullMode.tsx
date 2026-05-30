@@ -109,7 +109,7 @@ export function FullMode() {
           </div>
           {gcode && (
             <p style={{ fontSize: 10, color: '#666', marginTop: 6, marginBottom: 0 }}>
-              G-code ready. Switch to the <strong style={{ color: '#88bbff' }}>Visualizer</strong> tab to preview the toolpath.
+              Cut ready. Open the <strong style={{ color: '#88bbff' }}>Preview</strong> step to see exactly what the machine will do.
             </p>
           )}
         </div>

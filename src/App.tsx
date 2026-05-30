@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { FullMode } from './studio/FullMode';
 import { OutlineMode } from './outline/OutlineMode';
 import { CutMode } from './cut/CutMode';
@@ -7,19 +7,22 @@ import { MachineControl } from './machine/MachineControl';
 import { OnboardingModal, resetOnboarding } from './components/OnboardingModal';
 import { useDesignStore } from './store/designStore';
 import { useMachineStore } from './store/machineStore';
+import { useUiStore, INTENTS, type Stage } from './store/uiStore';
 import { emergencyStop } from './comms/maslowSocket';
 import './App.css';
 
-// Three design modes:
-//   - 'full'    — Pocket-clearing relief mode (most powerful)
-//   - 'outline' — Relief outlines only, fill cleared by hand
-//   - 'cut'     — Bit follows the line, no offset
-// Plus 'visualizer' and 'machine' for preview / machine control.
-type Tab = 'full' | 'outline' | 'cut' | 'visualizer' | 'machine';
-const DESIGN_TABS: ReadonlyArray<Tab> = ['full', 'outline', 'cut'];
+const STAGES: { id: Stage; label: string }[] = [
+  { id: 'design', label: 'Design' },
+  { id: 'preview', label: 'Preview' },
+  { id: 'cut', label: 'Cut' },
+];
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>('full');
+  const stage = useUiStore((s) => s.stage);
+  const setStage = useUiStore((s) => s.setStage);
+  const intent = useUiStore((s) => s.intent);
+  const setIntent = useUiStore((s) => s.setIntent);
+
   const connection = useMachineStore((s) => s.connection);
   const gcode = useDesignStore((s) => s.gcode);
   const undo = useDesignStore((s) => s.undo);
@@ -29,7 +32,6 @@ export default function App() {
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Undo/redo
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         undo();
@@ -39,11 +41,10 @@ export default function App() {
         redo();
       }
 
-      // Arrow keys to nudge design position (skip if typing in an input)
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return;
 
-      const step = e.shiftKey ? 10 : 1; // Shift = 10mm, normal = 1mm
+      const step = e.shiftKey ? 10 : 1;
       if (e.key === 'ArrowLeft') { e.preventDefault(); nudgeDesign(-step, 0); }
       if (e.key === 'ArrowRight') { e.preventDefault(); nudgeDesign(step, 0); }
       if (e.key === 'ArrowUp') { e.preventDefault(); nudgeDesign(0, step); }
@@ -54,7 +55,7 @@ export default function App() {
   }, [undo, redo, nudgeDesign]);
 
   const handleEstop = () => {
-    const sent = emergencyStop(); // feed-hold (!) then soft-reset (Ctrl-X)
+    const sent = emergencyStop();
     useMachineStore.getState().clearJob();
     if (!sent) {
       useMachineStore.getState().addConsoleMessage({
@@ -65,94 +66,97 @@ export default function App() {
     }
   };
 
+  const showEstop = connection === 'connected' && (stage === 'design' || stage === 'cut');
+
   return (
     <div className="app">
       <header className="app-header">
         <div className="app-brand">Maslow CNC Studio</div>
-        <nav className="app-tabs">
-          <button
-            className={`tab-btn ${tab === 'full' ? 'active' : ''}`}
-            onClick={() => setTab('full')}
-            title="Full pocket-clearing relief mode — most powerful"
-          >
-            Full
-          </button>
-          <button
-            className={`tab-btn ${tab === 'outline' ? 'active' : ''}`}
-            onClick={() => setTab('outline')}
-            title="Relief outlines only — clear the waste between cuts by hand"
-          >
-            Outline
-          </button>
-          <button
-            className={`tab-btn ${tab === 'cut' ? 'active' : ''}`}
-            onClick={() => setTab('cut')}
-            title="Bit follows the line — straight cuts, no kerf compensation"
-          >
-            Cut
-          </button>
-          <button
-            className={`tab-btn ${tab === 'visualizer' ? 'active' : ''}`}
-            onClick={() => setTab('visualizer')}
-            title={gcode ? 'Preview generated G-code toolpaths' : 'Generate G-code first'}
-          >
-            Visualizer{gcode && <span style={{ marginLeft: 5, fontSize: 9, color: '#44cc44' }}>●</span>}
-          </button>
-          <button
-            className={`tab-btn ${tab === 'machine' ? 'active' : ''}`}
-            onClick={() => setTab('machine')}
-          >
-            Machine Control
-          </button>
+
+        {/* Stage rail — the guided 1-2-3 flow */}
+        <nav className="app-tabs" aria-label="Workflow stages">
+          {STAGES.map((s, i) => {
+            const active = stage === s.id;
+            const previewReady = s.id === 'preview' && gcode;
+            return (
+              <button
+                key={s.id}
+                className={`tab-btn ${active ? 'active' : ''}`}
+                onClick={() => setStage(s.id)}
+                title={
+                  s.id === 'design' ? 'Set up material, add your design, choose what to make'
+                  : s.id === 'preview' ? (gcode ? 'See exactly what the machine will do' : 'Generate a cut first')
+                  : 'Connect and run the cut on your machine'
+                }
+              >
+                <span style={{ opacity: 0.5, marginRight: 6 }}>{i + 1}</span>
+                {s.label}
+                {previewReady && <span style={{ marginLeft: 5, fontSize: 9, color: '#44cc44' }}>●</span>}
+              </button>
+            );
+          })}
         </nav>
 
-        {/* Floating E-stop in header when connected */}
-        {connection === 'connected' && DESIGN_TABS.includes(tab) && (
+        {showEstop && (
           <button
             onClick={handleEstop}
             style={{
-              marginLeft: 'auto',
-              padding: '4px 16px',
-              background: '#cc2222',
-              border: '2px solid #ff4444',
-              borderRadius: 4,
-              color: '#fff',
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: 'pointer',
-              letterSpacing: 1,
+              marginLeft: 'auto', padding: '4px 16px', background: '#cc2222',
+              border: '2px solid #ff4444', borderRadius: 4, color: '#fff',
+              fontSize: 12, fontWeight: 700, cursor: 'pointer', letterSpacing: 1,
             }}
           >
             E-STOP
           </button>
         )}
 
-        {/* Help button — opens onboarding again */}
         <button
           onClick={resetOnboarding}
           title="Show welcome tour"
+          aria-label="Help and welcome tour"
           style={{
-            marginLeft: connection === 'connected' && DESIGN_TABS.includes(tab) ? 8 : 'auto',
-            width: 28,
-            height: 28,
-            borderRadius: '50%',
-            background: '#1a1a30',
-            border: '1px solid #2a2a4a',
-            color: '#888',
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: 'pointer',
+            marginLeft: showEstop ? 8 : 'auto', width: 28, height: 28, borderRadius: '50%',
+            background: '#1a1a30', border: '1px solid #2a2a4a', color: '#888',
+            fontSize: 13, fontWeight: 600, cursor: 'pointer',
           }}
         >
           ?
         </button>
       </header>
+
+      {/* Intent chooser — only on the Design stage. Picks WHAT you're making,
+          which selects the design mode underneath. */}
+      {stage === 'design' && (
+        <div className="intent-bar" role="radiogroup" aria-label="What are you making?">
+          <span className="intent-bar-label">What are you making?</span>
+          {INTENTS.map((it) => {
+            const active = intent === it.id;
+            return (
+              <button
+                key={it.id}
+                role="radio"
+                aria-checked={active}
+                className={`intent-chip ${active ? 'active' : ''}`}
+                onClick={() => setIntent(it.id)}
+                title={it.blurb}
+              >
+                <span className="intent-glyph" aria-hidden="true">{it.glyph}</span>
+                <span className="intent-text">
+                  <strong>{it.label}</strong>
+                  <small>{it.blurb}</small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <main className="app-main">
-        {tab === 'full' && <FullMode />}
-        {tab === 'outline' && <OutlineMode />}
-        {tab === 'cut' && <CutMode />}
-        {tab === 'visualizer' && <Visualizer />}
-        {tab === 'machine' && <MachineControl />}
+        {stage === 'design' && intent === 'cutout' && <CutMode />}
+        {stage === 'design' && intent === 'carve' && <FullMode />}
+        {stage === 'design' && intent === 'score' && <OutlineMode />}
+        {stage === 'preview' && <Visualizer />}
+        {stage === 'cut' && <MachineControl />}
       </main>
       <OnboardingModal />
     </div>

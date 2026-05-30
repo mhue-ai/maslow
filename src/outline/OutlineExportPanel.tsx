@@ -5,6 +5,7 @@ import type { GenerationResult } from '../gcode/gcodeGenerator';
 import { computeSvgTransform } from '../svg/svgScaler';
 import { checkBounds, type BoundsResult } from '../gcode/boundsCheck';
 import { downloadGcode } from '../gcode/gcodeWriter';
+import { useUiStore } from '../store/uiStore';
 
 /**
  * Export panel — Outline mode.
@@ -116,7 +117,10 @@ export function OutlineExportPanel() {
             Outlines only — clear the waste between cuts by hand before the profile release.
           </div>
 
-          <button className="btn" onClick={() => result && downloadGcode(result.lines, 'maslow-outline.nc')} style={{ width: '100%', marginTop: 8 }}>
+          <button className="btn btn-primary" onClick={() => useUiStore.getState().setStage('preview')} style={{ width: '100%', marginTop: 8 }}>
+            Preview cut →
+          </button>
+          <button className="btn" onClick={() => result && downloadGcode(result.lines, 'maslow-outline.nc')} style={{ width: '100%', marginTop: 4 }}>
             Download .nc
           </button>
         </div>

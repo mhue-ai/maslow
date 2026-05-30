@@ -65,11 +65,10 @@ export function OutlineMode() {
           marginBottom: 10, padding: '6px 8px', background: '#1a2a4a',
           border: '1px solid #2a4a7a', borderRadius: 4, fontSize: 10, color: '#88bbff',
         }}>
-          <strong>Outline mode</strong> — relief outlines only. Mark shapes as
-          <strong style={{ color: '#ff6666' }}> Relieve</strong> and the toolpath cuts
-          the outline of each relief plus any island inside it. Clear the waste between
-          outlines by hand. For pocket-filled reliefs use <strong>Full</strong>; for
-          straight bit-follows-line cuts use <strong>Cut</strong>.
+          <strong>Score</strong> — cuts just the outlines of the areas you mark as
+          <strong style={{ color: '#ff6666' }}> Relieve</strong> (plus any island inside them),
+          and you clear the waste between by hand. For machine-cleared reliefs use
+          <strong>Carve</strong>; to cut shapes free from the sheet use <strong>Cut Out</strong>.
         </div>
 
         <MaterialPanel />
@@ -90,7 +89,7 @@ export function OutlineMode() {
         {gcode && (
           <div style={{ flexShrink: 0, borderTop: '1px solid #2a2a4a', paddingTop: 8, marginTop: 8 }}>
             <p style={{ fontSize: 10, color: '#666', margin: 0 }}>
-              G-code ready. Switch to the <strong style={{ color: '#88bbff' }}>Visualizer</strong> tab to preview the toolpath.
+              Cut ready. Open the <strong style={{ color: '#88bbff' }}>Preview</strong> step to see exactly what the machine will do.
             </p>
           </div>
         )}

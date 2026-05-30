@@ -14,24 +14,19 @@ const STEPS: Step[] = [
     body: 'Design, simulate, and cut — all in one place. This quick tour covers the essentials. You can skip at any time and revisit via the Help menu.',
   },
   {
-    title: '1. Pick a design mode',
-    body: 'Three top-level modes: Full (pocket-clear reliefs with full kerf clearing), Outline (cut just the relief boundaries and clear waste by hand), Cut (bit follows the line — straight engraves and through-cuts). Import an SVG and pick the mode that fits the job.',
+    title: 'Step 1 — Design',
+    body: 'Pick what you’re making: Cut Out (a shape comes free from the sheet), Carve (lower areas for signs and trays), or Score (run the bit along the lines). Then choose your material and bit — the right speeds are set for you — add your design, and you’re ready.',
     highlight: 'design',
   },
   {
-    title: '2. Generate G-Code',
-    body: 'When depths are set, click Generate G-Code. The app creates toolpaths with pocket clearing, island avoidance, and profile cuts. Preview them in 3D or animate with the Paths view.',
+    title: 'Step 2 — Preview',
+    body: 'Before anything spins, the Preview step shows exactly what the machine will do — the toolpath, the time, and a 3D render of the finished piece. Catch mistakes here, not in the wood.',
     highlight: 'gcode',
   },
   {
-    title: '3. Machine Control',
-    body: 'Connect to your Maslow via WebSocket. Calibrate on first use (belt retract, extend, attach, tension, find anchors). Upload G-code to the machine and run it from flash storage.',
+    title: 'Step 3 — Cut',
+    body: 'Connect to your Maslow, set zero, and run. First time on a machine? Calibrate the belts first. Always start with a Dry Run — the bit stays up so you can watch the moves with zero risk.',
     highlight: 'machine',
-  },
-  {
-    title: '4. Safety First',
-    body: 'Always use Dry Run for new designs — the Z axis stays at safe height so you can verify the toolpath with no risk. Pre-flight checks catch issues before cuts start.',
-    highlight: 'dryrun',
   },
   {
     title: 'Ready to Cut',

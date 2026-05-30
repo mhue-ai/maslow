@@ -64,10 +64,10 @@ export function CutMode() {
           marginBottom: 10, padding: '6px 8px', background: '#1a2a4a',
           border: '1px solid #2a4a7a', borderRadius: 4, fontSize: 10, color: '#88bbff',
         }}>
-          <strong>Cut mode</strong> — bit follows the line, no kerf offset. Pick
-          which shapes to cut, set tool width + tool depth, and the bit traces
-          each selected path AS DRAWN. For kerf-compensated outlines use
-          <strong> Outline</strong>; for pocket-cleared reliefs use <strong>Full</strong>.
+          <strong>Cut Out</strong> — the bit follows your lines exactly and the
+          parts come free from the sheet. Pick which shapes to cut and how deep;
+          tabs are added automatically on through-cuts. For carved signs and
+          trays use <strong>Carve</strong>; to just trace lines use <strong>Score</strong>.
         </div>
 
         <MaterialPanel />
@@ -88,7 +88,7 @@ export function CutMode() {
         {gcode && (
           <div style={{ flexShrink: 0, borderTop: '1px solid #2a2a4a', paddingTop: 8, marginTop: 8 }}>
             <p style={{ fontSize: 10, color: '#666', margin: 0 }}>
-              G-code ready. Switch to the <strong style={{ color: '#88bbff' }}>Visualizer</strong> tab to preview the toolpath.
+              Cut ready. Open the <strong style={{ color: '#88bbff' }}>Preview</strong> step to see exactly what the machine will do.
             </p>
           </div>
         )}

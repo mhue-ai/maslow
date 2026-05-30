@@ -5,6 +5,7 @@ import { computeSvgTransform } from '../../svg/svgScaler';
 import { checkBounds, type BoundsResult } from '../../gcode/boundsCheck';
 import { checkSledClearance, type SledClearanceResult } from '../../gcode/sledClearanceCheck';
 import { downloadGcode } from '../../gcode/gcodeWriter';
+import { useUiStore } from '../../store/uiStore';
 
 export function GcodeExportPanel() {
   const paths = useDesignStore((s) => s.paths);
@@ -139,7 +140,10 @@ export function GcodeExportPanel() {
           <div>{result.stats.operationCount} operations</div>
           <div>~{result.stats.estimatedTimeMin} min estimated</div>
 
-          <button className="btn" onClick={() => result && downloadGcode(result.lines, 'maslow-cut.nc')} style={{ width: '100%', marginTop: 8 }}>
+          <button className="btn btn-primary" onClick={() => useUiStore.getState().setStage('preview')} style={{ width: '100%', marginTop: 8 }}>
+            Preview cut →
+          </button>
+          <button className="btn" onClick={() => result && downloadGcode(result.lines, 'maslow-cut.nc')} style={{ width: '100%', marginTop: 4 }}>
             Download .nc
           </button>
         </div>

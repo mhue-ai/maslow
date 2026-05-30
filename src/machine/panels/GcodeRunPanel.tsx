@@ -445,7 +445,7 @@ export function GcodeRunPanel() {
       )}
 
       {!gcode ? (
-        <p style={{ fontSize: 12, color: '#555' }}>Generate G-code in the Full, Outline, or Cut tab first.</p>
+        <p style={{ fontSize: 12, color: '#555' }}>Generate a cut in the Design step first.</p>
       ) : (
         <>
           {/* File info */}

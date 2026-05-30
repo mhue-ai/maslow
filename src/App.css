@@ -60,6 +60,76 @@
   overflow: hidden;
 }
 
+/* Intent chooser bar — "What are you making?" on the Design stage */
+.intent-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #14142a;
+  border-bottom: 1px solid #2a2a4a;
+  flex-shrink: 0;
+}
+
+.intent-bar-label {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #88bbff;
+  padding-right: 8px;
+  white-space: nowrap;
+}
+
+.intent-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid #2a2a4a;
+  border-radius: 8px;
+  background: #0d0d1a;
+  color: #999;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.12s;
+}
+
+.intent-chip:hover {
+  border-color: #3a4a6a;
+  color: #ccc;
+}
+
+.intent-chip.active {
+  border-color: #4a7abf;
+  background: #1a2a4a;
+  color: #fff;
+}
+
+.intent-glyph {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.intent-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.intent-text strong {
+  font-size: 13px;
+}
+
+.intent-text small {
+  font-size: 10px;
+  color: #777;
+}
+
+.intent-chip.active .intent-text small {
+  color: #9bf;
+}
+
 /* Design mode layout — shared by Full / Outline / Cut */
 .design-mode {
   display: flex;
