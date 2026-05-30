@@ -198,7 +198,7 @@ export function SvgPreview2D() {
           const bbox = shape.getBBox();
           const area = bbox.width * bbox.height;
           if (area < bestArea) { bestArea = area; bestId = sid; }
-        } catch {}
+        } catch { /* getBBox throws on detached/zero-size nodes — skip */ }
       }
     });
 

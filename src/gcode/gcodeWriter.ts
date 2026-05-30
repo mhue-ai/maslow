@@ -2,6 +2,8 @@
  * G-code line formatting utilities for Maslow 4 CNC.
  * Only emits Maslow-compatible commands: G0, G1, G2, G3, G17, G21, M03, M05.
  */
+import type { ToolConfig } from '../types/design';
+import { saveGcodeFile } from '../utils/fileSave';
 
 export function formatCoord(v: number): string {
   return v.toFixed(3);
@@ -47,7 +49,54 @@ export function gcodeFooter(safeHeight: number): string[] {
 }
 
 export async function downloadGcode(lines: string[], filename: string): Promise<void> {
-  const { saveGcodeFile } = await import('../utils/fileSave');
   const content = lines.join('\n');
   await saveGcodeFile(content, filename);
+}
+
+/**
+ * Estimate job run time (minutes) from emitted G-code lines.
+ *
+ * Differentiates rapids (G0, at the machine's max traverse), cutting moves
+ * (G1 XY, at feedRate), and plunges (G1 with Z motion, at plungeRate). Lumping
+ * them together overestimates rapid time by 5-10× on retract-heavy jobs.
+ *
+ * Shared by all three mode generators (Full / Outline / Cut) — previously this
+ * exact loop was copy-pasted into each.
+ */
+const RAPID_RATE = 5000; // mm/min — Maslow 4 typical max traverse
+
+export function estimateJobTimeMin(lines: string[], toolConfig: ToolConfig): number {
+  let rapidTime = 0;
+  let cutTime = 0;
+  let plungeTime = 0;
+  let px = 0, py = 0, pz = toolConfig.safeHeight;
+
+  for (const line of lines) {
+    const isG0 = line.startsWith('G0');
+    const isG1 = line.startsWith('G1');
+    if (!isG0 && !isG1) continue;
+
+    const xm = line.match(/X(-?[\d.]+)/);
+    const ym = line.match(/Y(-?[\d.]+)/);
+    const zm = line.match(/Z(-?[\d.]+)/);
+    if (!xm && !ym && !zm) continue;
+
+    const nx = xm ? parseFloat(xm[1]) : px;
+    const ny = ym ? parseFloat(ym[1]) : py;
+    const nz = zm ? parseFloat(zm[1]) : pz;
+    const dx = nx - px, dy = ny - py, dz = nz - pz;
+    const xyDist = Math.hypot(dx, dy);
+    const zDist = Math.abs(dz);
+
+    if (isG0) {
+      rapidTime += Math.max(xyDist, zDist) / RAPID_RATE;
+    } else if (zDist > 0.001) {
+      plungeTime += Math.hypot(xyDist, zDist) / toolConfig.plungeRate;
+    } else {
+      cutTime += xyDist / toolConfig.feedRate;
+    }
+    px = nx; py = ny; pz = nz;
+  }
+
+  return Math.max(1, Math.round(rapidTime + cutTime + plungeTime));
 }

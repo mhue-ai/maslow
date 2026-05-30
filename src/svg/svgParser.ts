@@ -56,7 +56,6 @@ export function parseSvg(svgText: string): ParsedSvg {
     allElements.forEach((el) => {
       const tag = el.tagName.toLowerCase();
       const isText = tag === 'text';
-      if (isText) hasTextElements;
 
       const isClosed = tag === 'polygon' || tag === 'rect' || tag === 'circle' || tag === 'ellipse'
         || (tag === 'path' && isPathClosed(el.getAttribute('d') ?? ''));

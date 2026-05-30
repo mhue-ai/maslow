@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { VisualizerViewport, type VisualizerMode } from './VisualizerViewport';
 import { SimulationPanel } from '../studio/panels/SimulationPanel';
 import { useDesignStore } from '../store/designStore';
@@ -65,8 +65,10 @@ export function Visualizer() {
     useDesignStore.getState().simReset();
   };
 
-  // Quick stats derived from gcode
-  const stats = (() => {
+  // Quick stats derived from gcode. Memoized on `gcode` so the full G-code
+  // re-parse (potentially tens of thousands of lines) doesn't run on every
+  // render — e.g. on each simulation-progress tick during playback.
+  const stats = useMemo(() => {
     if (!gcode) return null;
     const lines = gcode.split('\n');
     const segments = gcodeToSegments(lines);
@@ -86,7 +88,7 @@ export function Visualizer() {
       cutDistM: dist(cuts) / 1000,
       rapidDistM: dist(rapids) / 1000,
     };
-  })();
+  }, [gcode]);
 
   return (
     <div style={{

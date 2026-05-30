@@ -13,6 +13,14 @@ const GRBL_BUFFER_SIZE = 127; // GRBL RX buffer is 128 bytes, keep 1 byte margin
 let bufferUsed = 0;
 let pendingLineLengths: number[] = []; // track byte length of each sent line
 
+// Receive reassembly buffer. WebSocket/TCP framing does NOT guarantee a frame
+// ends on a newline — a status report or an `ok` can be split across two
+// frames. We accumulate incoming text here and only dispatch COMPLETE lines
+// (terminated by \n), retaining any trailing partial fragment for the next
+// frame. Without this, a split `ok\n` never matches `line === 'ok'`, the
+// buffer counter never decrements, and a running job stalls permanently.
+let rxBuffer = '';
+
 export function connect(url: string): void {
   const store = useMachineStore.getState();
 
@@ -52,6 +60,7 @@ export function connect(url: string): void {
     lastResponseTime = Date.now();
     bufferUsed = 0;
     pendingLineLengths = [];
+    rxBuffer = ''; // fresh session — drop any stale partial line
 
     // Status polling — slower during jobs to avoid competing with G-code
     statusPollTimer = setInterval(() => {
@@ -78,17 +87,32 @@ export function connect(url: string): void {
   ws.onmessage = async (event) => {
     lastResponseTime = Date.now();
 
-    // ESP3D sends data as Blob or string — handle both
-    let data: string;
-    if (event.data instanceof Blob) {
-      data = await event.data.text();
-    } else {
-      data = String(event.data);
-    }
+    try {
+      // ESP3D sends data as Blob or string — handle both
+      let data: string;
+      if (event.data instanceof Blob) {
+        data = await event.data.text();
+      } else {
+        data = String(event.data);
+      }
 
-    const lines = data.split('\n').filter((l) => l.trim());
-    for (const line of lines) {
-      handleMessage(line.trim());
+      // Append to the reassembly buffer, then peel off only complete lines.
+      // The trailing fragment (text after the last \n) stays buffered until
+      // the next frame completes it.
+      rxBuffer += data;
+      const parts = rxBuffer.split('\n');
+      rxBuffer = parts.pop() ?? ''; // last element is the incomplete remainder
+
+      for (const part of parts) {
+        const line = part.trim();
+        if (line) handleMessage(line);
+      }
+    } catch (err) {
+      useMachineStore.getState().addConsoleMessage({
+        timestamp: Date.now(),
+        text: `Receive error: ${err instanceof Error ? err.message : String(err)}`,
+        type: 'error',
+      });
     }
   };
 
@@ -186,6 +210,7 @@ function cleanup(): void {
   }
   bufferUsed = 0;
   pendingLineLengths = [];
+  rxBuffer = '';
 }
 
 function forceReconnect(): void {

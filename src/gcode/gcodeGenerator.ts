@@ -2,7 +2,7 @@ import type { ToolConfig, ShapeLevel } from '../types/design';
 import type { ConvertedPath } from '../svg/svgToShapes';
 import type { SvgTransform } from '../svg/svgScaler';
 import { transformPoint } from '../svg/svgScaler';
-import { gcodeHeader, gcodeFooter, rapidZ } from './gcodeWriter';
+import { gcodeHeader, gcodeFooter, rapidZ, estimateJobTimeMin } from './gcodeWriter';
 import { cutPocketAtLayer } from './pocketClearing';
 import { generateProfileGcode, prepareProfileGeometry, cutProfileAtLayer, type ProfileGeometry } from './profileCut';
 import { detectIslands } from './islandDetection';
@@ -279,55 +279,11 @@ export async function generateGcode(
 
   lines.push(...gcodeFooter(toolConfig.safeHeight));
 
-  // Estimate time — differentiate rapids (G0), cuts (G1 XY), and plunges (G1 Z)
-  // Rapids run at the machine's max traverse rate; cuts at toolConfig.feedRate;
-  // plunges at toolConfig.plungeRate. Lumping them together (the previous
-  // implementation) overestimated rapid time by 5-10× for designs with lots
-  // of inter-feature retracts.
-  const RAPID_RATE = 5000; // mm/min — Maslow 4 typical max traverse
-  let rapidTime = 0; // minutes
-  let cutTime = 0;
-  let plungeTime = 0;
-  let px = 0, py = 0, pz = toolConfig.safeHeight;
-
-  for (const line of lines) {
-    const isG0 = line.startsWith('G0');
-    const isG1 = line.startsWith('G1');
-    if (!isG0 && !isG1) continue;
-
-    const xm = line.match(/X(-?[\d.]+)/);
-    const ym = line.match(/Y(-?[\d.]+)/);
-    const zm = line.match(/Z(-?[\d.]+)/);
-    if (!xm && !ym && !zm) continue;
-
-    const nx = xm ? parseFloat(xm[1]) : px;
-    const ny = ym ? parseFloat(ym[1]) : py;
-    const nz = zm ? parseFloat(zm[1]) : pz;
-    const dx = nx - px, dy = ny - py, dz = nz - pz;
-    const xyDist = Math.hypot(dx, dy);
-    const zDist = Math.abs(dz);
-
-    if (isG0) {
-      // Rapid — moves both XY and Z at traverse rate. Use longest leg.
-      rapidTime += Math.max(xyDist, zDist) / RAPID_RATE;
-    } else {
-      // G1: if there's any Z motion, use plungeRate; else feedRate
-      if (zDist > 0.001) {
-        plungeTime += Math.hypot(xyDist, zDist) / toolConfig.plungeRate;
-      } else {
-        cutTime += xyDist / toolConfig.feedRate;
-      }
-    }
-    px = nx; py = ny; pz = nz;
-  }
-
-  const totalMin = rapidTime + cutTime + plungeTime;
-
   return {
     lines,
     stats: {
       lineCount: lines.length,
-      estimatedTimeMin: Math.max(1, Math.round(totalMin)),
+      estimatedTimeMin: estimateJobTimeMin(lines, toolConfig),
       operationCount,
       copyCount: 1 + designCopies.length,
     },

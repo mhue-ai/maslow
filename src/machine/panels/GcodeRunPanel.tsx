@@ -370,14 +370,31 @@ export function GcodeRunPanel() {
   const machineState = status?.state ?? 'Unknown';
   const isRunning = machineState === 'Run' || machineState === 'Hold';
 
-  if (phase === 'running' && !isRunning && machineState === 'Idle') {
-    // Complete job history record as successful
-    if (jobRecordIdRef.current) {
-      completeJobRecord(jobRecordIdRef.current, 'completed');
-      jobRecordIdRef.current = null;
-    }
-    setTimeout(() => setPhase('done'), 500);
-  }
+  // Job completion detection.
+  //
+  // Previously this ran in the render body and fired setTimeout(setPhase) on
+  // every render where state===Idle — scheduling overlapping timers and, worse,
+  // treating a single transient Idle report as "done". The Maslow can report
+  // Idle briefly between issuing $LocalFS/Run and the first motion, which would
+  // tear down the running controls mid-job.
+  //
+  // Now: require Idle to PERSIST for a confirmation window before declaring the
+  // job done. Any non-Idle status within the window cancels the pending
+  // completion. The effect owns the timer and clears it on cleanup.
+  useEffect(() => {
+    if (phase !== 'running') return;
+    if (machineState !== 'Idle') return; // Run/Hold/etc. — not done
+
+    const t = setTimeout(() => {
+      if (jobRecordIdRef.current) {
+        completeJobRecord(jobRecordIdRef.current, 'completed');
+        jobRecordIdRef.current = null;
+      }
+      setPhase('done');
+    }, 1500); // sustained-idle confirmation window
+
+    return () => clearTimeout(t);
+  }, [phase, machineState]);
 
   // Track alarm state as error outcome
   useEffect(() => {
@@ -530,7 +547,7 @@ export function GcodeRunPanel() {
                 <button
                   className="btn btn-primary"
                   disabled={criticalFails.length > 0}
-                  onClick={allChecksPassed ? handlePreflightPass : handlePreflightPass}
+                  onClick={handlePreflightPass}
                   style={{
                     flex: 1,
                     background: allChecksPassed ? '#1a4a1a' : '#3a3a1a',

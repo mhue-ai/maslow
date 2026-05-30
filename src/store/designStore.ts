@@ -298,6 +298,7 @@ export const useDesignStore = create<DesignState>((set, get) => ({
   },
 
   nudgeDesign: (dx, dy) => {
+    get().pushHistory();
     set((s) => ({
       svgTransformOverride: {
         ...s.svgTransformOverride,
@@ -308,12 +309,15 @@ export const useDesignStore = create<DesignState>((set, get) => ({
   },
 
   profileCutId: null,
-  setProfileCutId: (id) => set((s) => {
-    // Profile must always be last in operationOrder.
-    const filtered = s.operationOrder.filter((x) => x !== id);
-    const newOrder = id ? [...filtered, id] : filtered;
-    return { profileCutId: id, operationOrder: newOrder };
-  }),
+  setProfileCutId: (id) => {
+    get().pushHistory();
+    set((s) => {
+      // Profile must always be last in operationOrder.
+      const filtered = s.operationOrder.filter((x) => x !== id);
+      const newOrder = id ? [...filtered, id] : filtered;
+      return { profileCutId: id, operationOrder: newOrder };
+    });
+  },
 
   // ── Outline mode ──
   outlineReliefIds: new Set(),
