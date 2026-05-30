@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useDesignStore } from '../../store/designStore';
+import { useUiStore } from '../../store/uiStore';
 import { computeSvgTransform, transformPoint } from '../../svg/svgScaler';
 
 /**
@@ -31,6 +32,7 @@ export function DesignChecks() {
   const cutThrough = useDesignStore((s) => s.cutThrough);
   const cutDepth = useDesignStore((s) => s.cutDepth);
   const setToolConfig = useDesignStore((s) => s.setToolConfig);
+  const intent = useUiStore((s) => s.intent);
 
   const checks = useMemo<Check[]>(() => {
     if (paths.length === 0 || !svgBounds) return [];
@@ -79,10 +81,13 @@ export function DesignChecks() {
     }
 
     // 3. Through-cut with no tabs → parts come loose.
+    // Score never cuts through; the cut-engine through-case only applies to Cut Out.
+    const cutEngineThrough = intent === 'cutout' && cutShapeIds.size > 0 &&
+      (cutThrough || cutDepth >= material.thickness - 0.1);
     const hasThrough =
       !!profileCutId ||
       Array.from(shapeLevels.values()).some((l) => l.level >= material.thickness) ||
-      (cutShapeIds.size > 0 && (cutThrough || cutDepth >= material.thickness - 0.1));
+      cutEngineThrough;
     if (hasThrough && toolConfig.tabCount === 0) {
       out.push({
         level: 'warn',
@@ -93,7 +98,7 @@ export function DesignChecks() {
 
     if (out.length === 0) out.push({ level: 'ok', text: 'Looks good — fits the material, no obvious problems.' });
     return out;
-  }, [paths, material, toolConfig, svgBounds, svgTransformOverride, shapeLevels, profileCutId, cutShapeIds, cutThrough, cutDepth, setToolConfig]);
+  }, [paths, material, toolConfig, svgBounds, svgTransformOverride, shapeLevels, profileCutId, cutShapeIds, cutThrough, cutDepth, intent, setToolConfig]);
 
   if (checks.length === 0) return null;
 

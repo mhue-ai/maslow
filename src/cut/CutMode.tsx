@@ -8,21 +8,20 @@ import { CutToolSettings } from './CutToolSettings';
 import { CutShapes } from './CutShapes';
 import { DesignChecks } from '../studio/panels/DesignChecks';
 import { useDesignStore } from '../store/designStore';
+import { useUiStore } from '../store/uiStore';
 import { saveProject, loadProject } from '../store/projectIO';
 
 /**
- * Cut mode — one of the three top-level design modes.
- *
- *   Full    — pocket-fill relief (full kerf clearing).     See src/studio/FullMode.tsx.
- *   Outline — relief outlines only, fill cleared by hand.  See src/outline/OutlineMode.tsx.
- *   Cut     — bit follows the line, no offset.              ← THIS FILE
- *
- * Cut mode is the simplest of the three: pick which shapes to cut, set a
- * global tool width (bit diameter) and tool depth, and the bit traces each
- * selected path AS DRAWN. Through-cuts auto-engage tabs when tool depth
- * reaches material thickness.
+ * The bit-follows-the-line engine, shared by TWO intents:
+ *   - Cut Out — cut all the way through; the parts come free (with tabs).
+ *   - Score   — shallow lines on the surface (engraving, fold lines, layout).
+ * Both trace each selected path AS DRAWN; only the depth differs. The intent
+ * (from uiStore) drives the copy and the depth controls here and in the
+ * Cutting / G-code panels.
  */
 export function CutMode() {
+  const intent = useUiStore((s) => s.intent);
+  const isScore = intent === 'score';
   const undo = useDesignStore((s) => s.undo);
   const redo = useDesignStore((s) => s.redo);
   const historyIndex = useDesignStore((s) => s.historyIndex);
@@ -65,10 +64,21 @@ export function CutMode() {
           marginBottom: 10, padding: '6px 8px', background: '#1a2a4a',
           border: '1px solid #2a4a7a', borderRadius: 4, fontSize: 10, color: '#88bbff',
         }}>
-          <strong>Cut Out</strong> — the bit follows your lines exactly and the
-          parts come free from the sheet. Pick which shapes to cut and how deep;
-          tabs are added automatically on through-cuts. For carved signs and
-          trays use <strong>Carve</strong>; to just trace lines use <strong>Score</strong>.
+          {isScore ? (
+            <>
+              <strong>Score</strong> — the bit follows your lines at a shallow
+              depth, leaving surface lines (engraving, fold lines, layout marks).
+              Pick which lines to score and how deep. To cut shapes all the way
+              out use <strong>Cut Out</strong>; to hollow out areas use <strong>Carve</strong>.
+            </>
+          ) : (
+            <>
+              <strong>Cut Out</strong> — the bit follows your lines and the parts
+              come free from the sheet. Pick which shapes to cut; holding tabs
+              are added automatically. To scratch shallow surface lines use
+              <strong> Score</strong>; to hollow out areas use <strong>Carve</strong>.
+            </>
+          )}
         </div>
 
         <MaterialPanel />

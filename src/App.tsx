@@ -22,6 +22,8 @@ export default function App() {
   const setStage = useUiStore((s) => s.setStage);
   const intent = useUiStore((s) => s.intent);
   const setIntent = useUiStore((s) => s.setIntent);
+  const carveOutlineOnly = useUiStore((s) => s.carveOutlineOnly);
+  const setCarveOutlineOnly = useUiStore((s) => s.setCarveOutlineOnly);
 
   const connection = useMachineStore((s) => s.connection);
   const gcode = useDesignStore((s) => s.gcode);
@@ -148,13 +150,39 @@ export default function App() {
               </button>
             );
           })}
+
+          {/* Carve sub-choice: machine clears the waste, or you clear it by hand
+              (outline-only relief). Two genuinely different ways to lower an area. */}
+          {intent === 'carve' && (
+            <div className="carve-submode" role="radiogroup" aria-label="How to carve">
+              <button
+                role="radio" aria-checked={!carveOutlineOnly}
+                className={`submode-btn ${!carveOutlineOnly ? 'active' : ''}`}
+                onClick={() => setCarveOutlineOnly(false)}
+                title="The machine hollows out the whole area"
+              >
+                🛠 Machine clears it
+              </button>
+              <button
+                role="radio" aria-checked={carveOutlineOnly}
+                className={`submode-btn ${carveOutlineOnly ? 'active' : ''}`}
+                onClick={() => setCarveOutlineOnly(true)}
+                title="The machine cuts just the outlines; you clear the waste by hand"
+              >
+                ✋ Outline only
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       <main className="app-main">
-        {stage === 'design' && intent === 'cutout' && <CutMode />}
-        {stage === 'design' && intent === 'carve' && <FullMode />}
-        {stage === 'design' && intent === 'score' && <OutlineMode />}
+        {/* Cut Out and Score are the same bit-follows-the-line engine (CutMode),
+            differing only by depth — CutMode reads the intent. */}
+        {stage === 'design' && (intent === 'cutout' || intent === 'score') && <CutMode />}
+        {/* Carve = hollow out areas: machine-cleared (FullMode) or
+            outline-only / clear-by-hand (OutlineMode). */}
+        {stage === 'design' && intent === 'carve' && (carveOutlineOnly ? <OutlineMode /> : <FullMode />)}
         {stage === 'preview' && <Visualizer />}
         {stage === 'cut' && <MachineControl />}
       </main>

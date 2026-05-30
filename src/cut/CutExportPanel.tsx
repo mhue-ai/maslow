@@ -19,6 +19,7 @@ export function CutExportPanel() {
   const cutThrough = useDesignStore((s) => s.cutThrough);
   const cutDepth = useDesignStore((s) => s.cutDepth);
   const toolConfig = useDesignStore((s) => s.toolConfig);
+  const isScore = useUiStore((s) => s.intent) === 'score';
   const material = useDesignStore((s) => s.material);
   const svgBounds = useDesignStore((s) => s.svgBounds);
   const svgTransformOverride = useDesignStore((s) => s.svgTransformOverride);
@@ -58,10 +59,10 @@ export function CutExportPanel() {
         svgBounds, material, toolConfig.workOrigin, svgTransformOverride, toolConfig.edgeClearance
       );
 
-      // "Cut all the way through" tracks the material thickness; otherwise use
-      // the partial depth. generateCutGcode auto-engages tabs once depth reaches
-      // thickness.
-      const effectiveDepth = cutThrough ? material.thickness : cutDepth;
+      // Score is always shallow (cutDepth). Cut Out tracks the material
+      // thickness when "through" is on; otherwise the partial depth.
+      // generateCutGcode auto-engages tabs once depth reaches thickness.
+      const effectiveDepth = (!isScore && cutThrough) ? material.thickness : cutDepth;
       const gen = await generateCutGcode(
         paths, cutShapeIds, effectiveDepth, toolConfig, transform,
         material.thickness, designCopies
@@ -77,7 +78,7 @@ export function CutExportPanel() {
     }
   };
 
-  const isThrough = cutThrough;
+  const isThrough = !isScore && cutThrough;
 
   return (
     <div>
@@ -91,7 +92,7 @@ export function CutExportPanel() {
         disabled={!hasSelection}
         style={{ width: '100%', marginBottom: 8 }}
       >
-        Generate Cut G-Code
+        {isScore ? 'Generate Score G-Code' : 'Generate Cut G-Code'}
       </button>
 
       {bounds && !bounds.inBounds && (
@@ -114,15 +115,17 @@ export function CutExportPanel() {
           <div>{result.stats.operationCount} operations</div>
           <div>~{result.stats.estimatedTimeMin} min estimated</div>
           <div style={{ fontSize: 10, color: '#666', marginTop: 4 }}>
-            {isThrough
-              ? 'Through-cut — tabs hold each piece until you remove them by hand.'
-              : 'Partial-depth cuts — leaves grooves at the chosen depth.'}
+            {isScore
+              ? 'Shallow surface lines along your paths — nothing is cut through.'
+              : isThrough
+                ? 'Through-cut — tabs hold each piece until you remove them by hand.'
+                : 'Partial-depth cuts — leaves grooves at the chosen depth.'}
           </div>
 
           <button className="btn btn-primary" onClick={() => useUiStore.getState().setStage('preview')} style={{ width: '100%', marginTop: 8 }}>
-            Preview cut →
+            Preview →
           </button>
-          <button className="btn" onClick={() => result && downloadGcode(result.lines, 'maslow-cut.nc')} style={{ width: '100%', marginTop: 4 }}>
+          <button className="btn" onClick={() => result && downloadGcode(result.lines, isScore ? 'maslow-score.nc' : 'maslow-cut.nc')} style={{ width: '100%', marginTop: 4 }}>
             Download .nc
           </button>
         </div>

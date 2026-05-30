@@ -1,4 +1,5 @@
 import { useDesignStore } from '../store/designStore';
+import { useUiStore } from '../store/uiStore';
 import type { WorkOrigin } from '../types/design';
 import { BitPicker } from '../studio/panels/BitPicker';
 import { AdvancedSection } from '../studio/panels/AdvancedSection';
@@ -19,6 +20,7 @@ export function CutToolSettings() {
   const cutDepth = useDesignStore((s) => s.cutDepth);
   const setCutDepth = useDesignStore((s) => s.setCutDepth);
   const material = useDesignStore((s) => s.material);
+  const isScore = useUiStore((s) => s.intent) === 'score';
 
   if (paths.length === 0) {
     return (
@@ -29,7 +31,8 @@ export function CutToolSettings() {
     );
   }
 
-  const isThrough = cutThrough;
+  // Score never cuts through; Cut Out cuts through unless the user opts out.
+  const isThrough = !isScore && cutThrough;
 
   return (
     <div>
@@ -50,23 +53,35 @@ export function CutToolSettings() {
 
       <BitPicker />
 
-      <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '4px 0 2px' }}
-        data-tip="Cut Out means the part comes free from the sheet — so it cuts all the way through and adds holding tabs. Uncheck to cut only partway (a groove or score line instead).">
-        <input type="checkbox" checked={cutThrough} onChange={(e) => setCutThrough(e.target.checked)} style={{ margin: 0 }} />
-        Cut all the way through
-      </label>
-      {!cutThrough && (
-        <label data-tip="How deep the partial cut goes (a groove / score line, not through).">
-          Depth
+      {isScore ? (
+        // Score is always shallow — just how deep the surface line goes.
+        <label data-tip="How deep the scored surface line goes. This never cuts through.">
+          Line depth
           <input type="number" value={cutDepth} min={0.5} max={Math.max(0.5, material.thickness - 0.5)} step={0.5}
             onChange={(e) => setCutDepth(Number(e.target.value))} />
           <span className="unit">mm</span>
         </label>
+      ) : (
+        <>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '4px 0 2px' }}
+            data-tip="Cut Out means the part comes free from the sheet — so it cuts all the way through and adds holding tabs. Uncheck to cut only partway (a groove instead).">
+            <input type="checkbox" checked={cutThrough} onChange={(e) => setCutThrough(e.target.checked)} style={{ margin: 0 }} />
+            Cut all the way through
+          </label>
+          {!cutThrough && (
+            <label data-tip="How deep the partial cut goes (a groove, not through).">
+              Depth
+              <input type="number" value={cutDepth} min={0.5} max={Math.max(0.5, material.thickness - 0.5)} step={0.5}
+                onChange={(e) => setCutDepth(Number(e.target.value))} />
+              <span className="unit">mm</span>
+            </label>
+          )}
+        </>
       )}
       <p style={{ fontSize: 10, color: isThrough ? '#ffaa44' : '#666', margin: '2px 0 0' }}>
         {isThrough
           ? `Cuts through all ${material.thickness}mm — tabs hold the parts until you remove them.`
-          : `Grooves ${cutDepth}mm deep (material is ${material.thickness}mm thick).`}
+          : `${isScore ? 'Scores' : 'Grooves'} ${cutDepth}mm deep (material is ${material.thickness}mm thick).`}
       </p>
 
       <AdvancedSection>

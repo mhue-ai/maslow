@@ -66,10 +66,11 @@ export function OutlineMode() {
           marginBottom: 10, padding: '6px 8px', background: '#1a2a4a',
           border: '1px solid #2a4a7a', borderRadius: 4, fontSize: 10, color: '#88bbff',
         }}>
-          <strong>Score</strong> — cuts just the outlines of the areas you mark as
-          <strong style={{ color: '#ff6666' }}> Relieve</strong> (plus any island inside them),
-          and you clear the waste between by hand. For machine-cleared reliefs use
-          <strong>Carve</strong>; to cut shapes free from the sheet use <strong>Cut Out</strong>.
+          <strong>Carve · Outline only</strong> — cuts just the outlines of the areas
+          you mark as <strong style={{ color: '#ff6666' }}>Relieve</strong> (plus any island
+          inside them), then you clear the waste between by hand — much faster on the
+          machine than hollowing it all out. Switch to <strong>Machine clears it</strong>
+          above to have the machine remove all the waste instead.
         </div>
 
         <MaterialPanel />
