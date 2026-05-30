@@ -16,6 +16,8 @@ interface HistoryEntry {
   svgTransformOverride: SvgTransformOverride;
   operationOrder: string[];
   designCopies: DesignCopy[];
+  liteReliefIds: Set<string>;
+  liteReliefDepth: number;
 }
 
 interface DesignState {
@@ -60,6 +62,19 @@ interface DesignState {
 
   // Profile cut — outermost shape, always last operation (auto-set on SVG import)
   profileCutId: string | null;
+  setProfileCutId: (id: string | null) => void;
+
+  // ── Design Light mode state ──
+  // Shapes marked here become "relief" regions in Light mode: their outlines
+  // are cut (with bit offset INSIDE) at the relief depth. Any Keep shape
+  // geometrically inside a Relief is auto-detected as an Island and gets
+  // outlined with bit offset OUTSIDE so it stays at full size. NO pocket fill
+  // is generated — the user clears the waste between outlines manually.
+  liteReliefIds: Set<string>;
+  setLiteRelief: (shapeId: string, isRelief: boolean) => void;
+  clearLiteReliefs: () => void;
+  liteReliefDepth: number;        // mm depth for all Light-mode outline cuts
+  setLiteReliefDepth: (mm: number) => void;
 
   // Generated G-code
   gcode: string | null;
@@ -109,6 +124,8 @@ function captureHistory(s: DesignState): HistoryEntry {
     svgTransformOverride: { ...s.svgTransformOverride },
     operationOrder: [...s.operationOrder],
     designCopies: s.designCopies.map((c) => ({ ...c })),
+    liteReliefIds: new Set(s.liteReliefIds),
+    liteReliefDepth: s.liteReliefDepth,
   };
 }
 
@@ -174,6 +191,9 @@ export const useDesignStore = create<DesignState>((set, get) => ({
       operationOrder: order,
       shapeLevels: levels,
       profileCutId: profileId,
+      // Clear Light-mode reliefs on every new SVG so stale IDs from a prior
+      // file don't carry over.
+      liteReliefIds: new Set(),
     });
   },
   selectedPathId: null,
@@ -270,6 +290,33 @@ export const useDesignStore = create<DesignState>((set, get) => ({
   },
 
   profileCutId: null,
+  setProfileCutId: (id) => set((s) => {
+    // Profile must always be last in operationOrder.
+    const filtered = s.operationOrder.filter((x) => x !== id);
+    const newOrder = id ? [...filtered, id] : filtered;
+    return { profileCutId: id, operationOrder: newOrder };
+  }),
+
+  // ── Design Light mode ──
+  liteReliefIds: new Set(),
+  setLiteRelief: (shapeId, isRelief) => {
+    get().pushHistory();
+    set((s) => {
+      const next = new Set(s.liteReliefIds);
+      if (isRelief) next.add(shapeId);
+      else next.delete(shapeId);
+      return { liteReliefIds: next };
+    });
+  },
+  clearLiteReliefs: () => {
+    get().pushHistory();
+    set({ liteReliefIds: new Set() });
+  },
+  liteReliefDepth: 3,
+  setLiteReliefDepth: (mm) => {
+    get().pushHistory();
+    set({ liteReliefDepth: Math.max(0.5, mm) });
+  },
 
   showCutPreview: false,
   toggleCutPreview: () => set((s) => ({ showCutPreview: !s.showCutPreview })),
@@ -309,6 +356,8 @@ export const useDesignStore = create<DesignState>((set, get) => ({
         svgTransformOverride: { ...entry.svgTransformOverride },
         operationOrder: [...entry.operationOrder],
         designCopies: entry.designCopies.map((c) => ({ ...c })),
+        liteReliefIds: new Set(entry.liteReliefIds),
+        liteReliefDepth: entry.liteReliefDepth,
         historyIndex: s.historyIndex - 1,
       };
     }),
@@ -324,7 +373,14 @@ export const useDesignStore = create<DesignState>((set, get) => ({
         svgTransformOverride: { ...entry.svgTransformOverride },
         operationOrder: [...entry.operationOrder],
         designCopies: entry.designCopies.map((c) => ({ ...c })),
+        liteReliefIds: new Set(entry.liteReliefIds),
+        liteReliefDepth: entry.liteReliefDepth,
         historyIndex: nextIdx,
       };
     }),
 }));
+
+// Dev-only: expose for browser console inspection (toolpath debugging).
+if (typeof window !== 'undefined') {
+  (window as unknown as { __designStore?: typeof useDesignStore }).__designStore = useDesignStore;
+}
