@@ -53,6 +53,12 @@ export function connect(url: string): void {
   }
 
   ws.onopen = () => {
+    // Defensive: clear any timers from a prior session before re-arming, so a
+    // reconnect race can't leak an orphaned interval that keeps polling `?` on
+    // a dead reference.
+    if (statusPollTimer) { clearInterval(statusPollTimer); statusPollTimer = null; }
+    if (healthCheckTimer) { clearInterval(healthCheckTimer); healthCheckTimer = null; }
+
     store.setConnection('connected');
     store.setConnectionError(null);
     store.resetRetry();
@@ -136,8 +142,22 @@ export function connect(url: string): void {
 
   ws.onclose = (event) => {
     const store = useMachineStore.getState();
+    const wasRunningJob = store.jobRunning;
     store.setConnection('disconnected');
     cleanup();
+
+    // A drop mid-job means the rest of the program never reached the
+    // controller. Abort the stream — do NOT let auto-reconnect silently
+    // resume from jobCurrentLine against a controller that may have reset or
+    // lost position.
+    if (wasRunningJob) {
+      store.clearJob();
+      store.addConsoleMessage({
+        timestamp: Date.now(),
+        text: 'Connection lost during a running job — streaming aborted. Re-home and verify position before resuming.',
+        type: 'error',
+      });
+    }
 
     // Map WebSocket close codes to helpful messages
     const codeLabel =
@@ -186,10 +206,40 @@ export function disconnect(): void {
   useMachineStore.getState().setConnection('disconnected');
 }
 
-export function send(command: string): void {
+/** Send a line command (newline-terminated). Returns whether it reached the socket. */
+export function send(command: string): boolean {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(command + '\n');
+    return true;
   }
+  return false;
+}
+
+/**
+ * Send a realtime byte immediately, with NO newline. GRBL realtime commands
+ * (`!` feed-hold, `~` resume, `?` status, `\x18` soft-reset) are processed the
+ * instant they arrive and must not be line-buffered. Returns whether it reached
+ * the socket.
+ */
+export function sendImmediate(raw: string): boolean {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(raw);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Emergency stop. Realtime feed-hold (`!`) to halt motion IMMEDIATELY, then
+ * soft-reset (Ctrl-X) to reset the controller. Both are sent as realtime bytes
+ * (no newline) so they jump ahead of any queued line data. Returns true if the
+ * commands reached the machine, false if the socket wasn't open (caller should
+ * tell the user to hit the physical stop).
+ */
+export function emergencyStop(): boolean {
+  const held = sendImmediate('!');
+  const reset = sendImmediate('\x18');
+  return held || reset;
 }
 
 /** Start streaming a job — call after setJob() to begin buffer-stuffed sending */
@@ -222,9 +272,22 @@ function forceReconnect(): void {
     ws = null;
   }
   const store = useMachineStore.getState();
+  // A health-check reconnect during a job is just as unsafe as a dropped
+  // socket — abort the stream rather than resuming after the reconnect.
+  if (store.jobRunning) {
+    store.clearJob();
+    store.addConsoleMessage({
+      timestamp: Date.now(),
+      text: 'Reconnecting during a running job — streaming aborted. Re-home and verify position before resuming.',
+      type: 'error',
+    });
+  }
   store.setConnection('disconnected');
-  // Reconnect immediately
-  setTimeout(() => {
+  // Reconnect immediately — route through the single reconnectTimer so
+  // disconnect()/connect() can cancel it (a bare setTimeout here would be an
+  // orphan that fires connect() even after the user clicks Disconnect).
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => {
     connect(useMachineStore.getState().url);
   }, 500);
 }
@@ -274,8 +337,10 @@ function handleMessage(line: string): void {
     return;
   }
 
-  // MINFO JSON response
-  if (line.includes('"homed"')) {
+  // MINFO JSON response. Require it to actually look like a JSON object —
+  // `includes('"homed"')` alone would match an echoed command or config dump
+  // containing that substring and wrongly trigger a belt-snapshot save.
+  if (line.startsWith('{') && line.includes('"homed"')) {
     const minfo = parseMInfo(line);
     if (minfo) {
       store.setMInfo(minfo);
@@ -292,10 +357,31 @@ function handleMessage(line: string): void {
     return;
   }
 
-  // Error messages
-  if (line.startsWith('error:') || line.includes('ALARM')) {
+  // ALARM is an ASYNCHRONOUS halt, NOT a per-line response. GRBL flushes its
+  // planner buffer and stops on alarm, so the byte-counter no longer reflects
+  // the controller's real RX buffer. Do NOT decrement per-line here (that would
+  // pop a pendingLineLengths entry with no matching completed line and corrupt
+  // the count). Reset the counters and abort any running job so streaming can't
+  // silently resume against a halted, flushed controller.
+  if (line.includes('ALARM')) {
     store.addConsoleMessage({ timestamp: Date.now(), text: line, type: 'error' });
-    // Free one buffer slot on error too
+    if (store.jobRunning) {
+      store.clearJob();
+      store.addConsoleMessage({
+        timestamp: Date.now(),
+        text: 'Job aborted — machine entered ALARM. Clear the alarm and re-home before resuming.',
+        type: 'error',
+      });
+    }
+    bufferUsed = 0;
+    pendingLineLengths = [];
+    return;
+  }
+
+  // `error:` IS a true per-line terminator — GRBL emits exactly one `ok` OR one
+  // `error:` per accepted line. Decrement one buffer slot (matches a queued line).
+  if (line.startsWith('error:')) {
+    store.addConsoleMessage({ timestamp: Date.now(), text: line, type: 'error' });
     if (pendingLineLengths.length > 0) {
       bufferUsed -= pendingLineLengths.shift()!;
     }

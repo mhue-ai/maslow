@@ -11,7 +11,7 @@ import { FileManagerPanel } from './panels/FileManagerPanel';
 import { MachineSettingsPanel } from './panels/MachineSettingsPanel';
 import { JobHistoryPanel } from './panels/JobHistoryPanel';
 import { useMachineStore } from '../store/machineStore';
-import { send } from '../comms/maslowSocket';
+import { emergencyStop } from '../comms/maslowSocket';
 
 type MachineTab = 'monitor' | 'jog' | 'calibrate' | 'gcode' | 'history' | 'console' | 'settings' | 'files' | 'firmware' | 'test';
 
@@ -33,8 +33,15 @@ export function MachineControl() {
   const connection = useMachineStore((s) => s.connection);
 
   const handleEstop = () => {
-    send('\x18'); // Ctrl-X soft reset
+    const sent = emergencyStop(); // feed-hold (!) then soft-reset (Ctrl-X)
     useMachineStore.getState().clearJob();
+    if (!sent) {
+      useMachineStore.getState().addConsoleMessage({
+        timestamp: Date.now(),
+        text: 'E-STOP could not be sent — not connected. Use the machine’s physical stop NOW.',
+        type: 'error',
+      });
+    }
   };
 
   return (

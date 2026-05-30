@@ -349,6 +349,15 @@ export function GcodeRunPanel() {
 
   /** Step 3: Run */
   const handleRun = () => {
+    // A real cut spins the router and begins motion on a single click. Require
+    // an explicit confirmation so an accidental click can't start a job.
+    // Dry runs keep Z at safe height, so they're allowed to start directly.
+    if (!dryRun) {
+      const ok = window.confirm(
+        'Start cutting?\n\nThe router will spin up and begin the program. Make sure the work is clamped, the bit is set, and the area is clear.'
+      );
+      if (!ok) return;
+    }
     send(`$LocalFS/Run=${JOB_FILENAME}`);
     // Start job history record
     jobRecordIdRef.current = startJobRecord({

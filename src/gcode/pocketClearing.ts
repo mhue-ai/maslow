@@ -475,6 +475,16 @@ export function generateRampEntry(polygon: Point[], targetZ: number, tool: ToolC
  * For an INNER boundary (hole, material is inside): conventional = CW.
  * Conventional milling: tool rotation opposes feed direction → chip starts thick, ends thin.
  * Climb milling: tool rotation aligns with feed direction → chip starts thin, ends thick.
+ *
+ * IMPORTANT — coordinate frame: `polygon` is already in MACHINE space (the
+ * SVG→machine transform applied a Y-flip, finalScaleY = -uniformScale, so
+ * machine space is Y-up / right-handed). `signedArea > 0` therefore measures
+ * true machine-space CCW. Because this function *forces* the winding to
+ * `wantCCW` (reversing the polygon when it doesn't match), the input winding —
+ * and hence the Y-flip's effect on it — is irrelevant: the emitted path always
+ * has the same machine-space direction for a given (boundaryType, direction).
+ * Do NOT add a mirror-compensation flip here; that would invert a correct,
+ * frame-consistent convention.
  */
 function orientForMilling(
   polygon: Point[],

@@ -7,7 +7,7 @@ import { MachineControl } from './machine/MachineControl';
 import { OnboardingModal, resetOnboarding } from './components/OnboardingModal';
 import { useDesignStore } from './store/designStore';
 import { useMachineStore } from './store/machineStore';
-import { send } from './comms/maslowSocket';
+import { emergencyStop } from './comms/maslowSocket';
 import './App.css';
 
 // Three design modes:
@@ -54,8 +54,15 @@ export default function App() {
   }, [undo, redo, nudgeDesign]);
 
   const handleEstop = () => {
-    send('\x18');
+    const sent = emergencyStop(); // feed-hold (!) then soft-reset (Ctrl-X)
     useMachineStore.getState().clearJob();
+    if (!sent) {
+      useMachineStore.getState().addConsoleMessage({
+        timestamp: Date.now(),
+        text: 'E-STOP could not be sent — not connected. Use the machine’s physical stop NOW.',
+        type: 'error',
+      });
+    }
   };
 
   return (

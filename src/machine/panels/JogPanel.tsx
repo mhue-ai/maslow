@@ -9,9 +9,16 @@ const Z_FEED = 300;
 export function JogPanel() {
   const [step, setStep] = useState(10);
   const connection = useMachineStore((s) => s.connection);
-  const disabled = connection !== 'connected';
+  const machineState = useMachineStore((s) => s.status?.state);
+
+  // Only allow jogging when the machine is genuinely idle (or already jogging).
+  // Sending $J during Run/Hold/Alarm/Home is rejected by GRBL and, worse,
+  // invites the user to mash buttons mid-job. Gate on state, not just the link.
+  const jogReady = connection === 'connected' && (machineState === 'Idle' || machineState === 'Jog');
+  const disabled = !jogReady;
 
   const jog = (axis: string, distance: number) => {
+    if (!jogReady) return; // defense in depth — buttons are also disabled
     const feed = axis === 'Z' ? Z_FEED : XY_FEED;
     send(`$J=G91 ${axis}${distance} F${feed}`);
   };
@@ -33,6 +40,13 @@ export function JogPanel() {
   return (
     <div>
       <h3>Jog Controls</h3>
+
+      {connection === 'connected' && !jogReady && (
+        <p style={{ fontSize: 10, color: '#ffaa44', margin: '0 0 8px' }}>
+          Jogging disabled — machine is {machineState ?? 'in an unknown state'}. Jog is only
+          available when Idle.
+        </p>
+      )}
 
       {/* Step size selector */}
       <div style={{ marginBottom: 12 }}>

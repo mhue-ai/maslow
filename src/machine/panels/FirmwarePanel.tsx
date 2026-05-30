@@ -126,10 +126,18 @@ export function FirmwarePanel() {
   const handleRestart = async () => {
     setStatus((s) => ({ ...s, firmware: 'Restarting...' }));
     try {
-      await fetch(`${uploadBase}/command?commandText=%24Restart`);
+      const resp = await fetch(`${uploadBase}/command?commandText=%24Restart`);
+      // A 4xx/5xx still resolves the fetch — without this check a failed restart
+      // would falsely report success. (The board may drop the socket as it
+      // reboots on success, which surfaces as a network error below; that's
+      // expected and not treated as a hard failure.)
+      if (!resp.ok) {
+        setStatus((s) => ({ ...s, firmware: `Error: restart rejected (HTTP ${resp.status})` }));
+        return;
+      }
       setStatus((s) => ({ ...s, firmware: 'Restart sent — machine will reboot' }));
     } catch {
-      setStatus((s) => ({ ...s, firmware: 'Error: Could not send restart command' }));
+      setStatus((s) => ({ ...s, firmware: 'Restart sent — machine rebooting (connection dropped)' }));
     }
   };
 

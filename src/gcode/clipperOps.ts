@@ -99,30 +99,50 @@ export async function offsetPolygon(polygon: Point[], distance: number): Promise
 }
 
 /**
- * Test if inner polygon is geometrically inside outer polygon.
- * Tests MULTIPLE points of the inner polygon (not just centroid)
- * to handle concave shapes correctly.
+ * Test if `inner` is geometrically (almost entirely) inside `outer`.
+ *
+ * AREA-BASED containment, not a vertex sample. The previous implementation
+ * sampled up to 8 vertices and returned true if a majority were inside — that
+ * gave false positives for shapes straddling the boundary (e.g. 5/8 vertices
+ * inside a partially-overlapping shape read as "fully contained") and false
+ * negatives for concave islands whose sampled vertices sat in a notch. Both
+ * mis-feed island detection and Z-level start-depth.
+ *
+ * Here: intersect inner ∩ outer and compare the intersection area to inner's
+ * own area. If ≥99% of inner lies inside outer, it's contained. This is exact
+ * up to Clipper's integer precision and robust to concavity and partial
+ * overlap.
  */
 export async function isPolygonInside(inner: Point[], outer: Point[]): Promise<boolean> {
+  if (inner.length < 3 || outer.length < 3) return false;
+
   const c = await getClipper();
-  const outerClipper = toClipper(outer);
+  const result = c.clipToPaths({
+    clipType: ClipperLib.ClipType.Intersection,
+    subjectInputs: [{ data: toClipper(inner), closed: true }],
+    clipInputs: [{ data: toClipper(outer) }],
+    subjectFillType: ClipperLib.PolyFillType.NonZero,
+  });
+  if (!result || result.length === 0) return false;
 
-  // Test multiple points of the inner polygon — if majority are inside, it's contained
-  const testCount = Math.min(inner.length, 8); // Test up to 8 points
-  const step = Math.max(1, Math.floor(inner.length / testCount));
-  let insideCount = 0;
+  const innerArea = polygonAreaInt(toClipper(inner));
+  if (innerArea <= 0) return false;
 
-  for (let i = 0; i < inner.length; i += step) {
-    const p = inner[i];
-    const result = c.pointInPolygon(
-      { x: Math.round(p.x * SCALE), y: Math.round(p.y * SCALE) },
-      outerClipper
-    );
-    if (result !== 0) insideCount++; // 1 = inside, -1 = on edge
+  let intersectArea = 0;
+  for (const path of result) intersectArea += polygonAreaInt(path);
+
+  return intersectArea / innerArea >= 0.99;
+}
+
+/** Absolute shoelace area of an integer-coordinate polygon. */
+function polygonAreaInt(poly: readonly { x: number; y: number }[]): number {
+  let a = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % poly.length];
+    a += p.x * q.y - q.x * p.y;
   }
-
-  // Consider "inside" if more than half the tested points are inside
-  return insideCount > testCount / 2;
+  return Math.abs(a) / 2;
 }
 
 /**
