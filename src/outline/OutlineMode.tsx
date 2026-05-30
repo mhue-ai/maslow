@@ -6,6 +6,7 @@ import { SvgTransformPanel } from '../studio/panels/SvgTransformPanel';
 import { OutlineExportPanel } from './OutlineExportPanel';
 import { OutlineToolSettings } from './OutlineToolSettings';
 import { OutlineShapes } from './OutlineShapes';
+import { DesignChecks } from '../studio/panels/DesignChecks';
 import { useDesignStore } from '../store/designStore';
 import { saveProject, loadProject } from '../store/projectIO';
 
@@ -75,6 +76,7 @@ export function OutlineMode() {
         <SvgImportPanel />
         <SvgTransformPanel />
         <OutlineToolSettings />
+        <DesignChecks />
         <OutlineExportPanel />
       </div>
 

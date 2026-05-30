@@ -6,6 +6,7 @@ import { SvgTransformPanel } from '../studio/panels/SvgTransformPanel';
 import { CutExportPanel } from './CutExportPanel';
 import { CutToolSettings } from './CutToolSettings';
 import { CutShapes } from './CutShapes';
+import { DesignChecks } from '../studio/panels/DesignChecks';
 import { useDesignStore } from '../store/designStore';
 import { saveProject, loadProject } from '../store/projectIO';
 
@@ -74,6 +75,7 @@ export function CutMode() {
         <SvgImportPanel />
         <SvgTransformPanel />
         <CutToolSettings />
+        <DesignChecks />
         <CutExportPanel />
       </div>
 

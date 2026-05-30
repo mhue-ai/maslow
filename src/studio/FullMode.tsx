@@ -7,6 +7,7 @@ import { SvgTransformPanel } from './panels/SvgTransformPanel';
 import { DepthPanel } from './panels/DepthPanel';
 import { ToolSettingsPanel } from './panels/ToolSettingsPanel';
 import { GcodeExportPanel } from './panels/GcodeExportPanel';
+import { DesignChecks } from './panels/DesignChecks';
 import { useDesignStore } from '../store/designStore';
 import { saveProject, loadProject } from '../store/projectIO';
 
@@ -77,6 +78,7 @@ export function FullMode() {
         <SvgImportPanel />
         <SvgTransformPanel />
         <ToolSettingsPanel />
+        <DesignChecks />
         <GcodeExportPanel />
       </div>
 
