@@ -31,14 +31,10 @@ export function CutShapes() {
   }
 
   const selectAll = () => { for (const p of paths) setCutShape(p.data.id, true); };
-  const isThrough = cutDepth >= material.thickness - 0.1;
-  const cutCount = paths.filter((p) => cutShapeIds.has(p.data.id)).length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <h3 style={{ margin: '0 0 6px' }}>
-        Shapes ({cutCount} / {paths.length} selected)
-      </h3>
+      <h3 style={{ margin: '0 0 6px' }}>Shapes</h3>
 
       {/*
         Tool width + tool depth — the two parameters Cut mode actually cares
@@ -82,16 +78,10 @@ export function CutShapes() {
         </label>
       </div>
 
-      <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
         <button className="btn btn-sm" onClick={selectAll} style={{ flex: 1 }}>Select All</button>
         <button className="btn btn-sm" onClick={clearCutShapes} style={{ flex: 1 }}>Clear</button>
       </div>
-
-      <p style={{ fontSize: 10, color: '#666', marginTop: 0, marginBottom: 6 }}>
-        Tick a shape to cut it. The bit centerline follows the line — the bit
-        diameter is the resulting groove width. For an offset cut (kerf
-        compensation around a part), use <strong style={{ color: '#88bbff' }}>Outline</strong> instead.
-      </p>
 
       <div style={{
         flex: '1 1 0', minHeight: 0, overflow: 'auto', border: '1px solid #2a2a4a',
@@ -136,11 +126,6 @@ export function CutShapes() {
         })}
       </div>
 
-      <p style={{ fontSize: 10, color: '#666', marginTop: 6, marginBottom: 0 }}>
-        All selected cut to <strong>{cutDepth} mm</strong>
-        {isThrough && ' — through-cut with tabs'}
-        {' · '}groove width <strong>{toolConfig.bitDiameter} mm</strong>.
-      </p>
     </div>
   );
 }

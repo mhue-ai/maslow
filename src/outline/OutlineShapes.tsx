@@ -60,15 +60,9 @@ export function OutlineShapes() {
     );
   }
 
-  const reliefCount = paths.filter((p) => outlineReliefIds.has(p.data.id)).length;
-  const islandCount = autoIslands.size;
-  const keepCount = paths.length - reliefCount - (profileCutId ? 1 : 0);
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <h3 style={{ margin: '0 0 6px' }}>
-        Shapes ({reliefCount} relief · {islandCount} island{islandCount === 1 ? '' : 's'} · {keepCount} keep)
-      </h3>
+      <h3 style={{ margin: '0 0 6px' }}>Shapes</h3>
 
       {/*
         The two parameters that actually determine whether the islands come out
@@ -115,19 +109,9 @@ export function OutlineShapes() {
         </label>
       </div>
 
-      <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-        <button className="btn btn-sm" onClick={clearOutlineReliefs} style={{ flex: 1 }}>
-          Clear All Reliefs
-        </button>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+        <button className="btn btn-sm" onClick={clearOutlineReliefs} style={{ flex: 1 }}>Clear</button>
       </div>
-
-      <p style={{ fontSize: 10, color: '#666', marginTop: 0, marginBottom: 6 }}>
-        Tick a shape as <strong style={{ color: '#ff6666' }}>Relieve</strong> to mark it as waste.
-        Any shape inside it that you leave un-ticked becomes an
-        <strong style={{ color: '#88ccff' }}> island</strong> automatically — its outline is cut to
-        protect it. Optionally pick one outer <strong style={{ color: '#ff8800' }}>profile</strong> for
-        the release through-cut.
-      </p>
 
       <div style={{
         flex: '1 1 0', minHeight: 0, overflow: 'auto', border: '1px solid #2a2a4a',
@@ -216,10 +200,6 @@ export function OutlineShapes() {
         })}
       </div>
 
-      <p style={{ fontSize: 10, color: '#666', marginTop: 6, marginBottom: 0 }}>
-        All outlines cut to <strong>{outlineReliefDepth} mm</strong>.
-        {profileCutId && ' Profile released through the full thickness with tabs.'}
-      </p>
     </div>
   );
 }

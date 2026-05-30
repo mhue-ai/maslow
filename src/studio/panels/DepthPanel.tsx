@@ -87,45 +87,16 @@ export function DepthPanel() {
           </label>
 
           <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
-            <button className="btn btn-sm" onClick={() => setShapeLevel(selectedPathId, 0)}>
-              Face (0)
-            </button>
-            <button className="btn btn-sm" onClick={() => setShapeLevel(selectedPathId, thickness / 2)}>
-              Half
-            </button>
-            <button className="btn btn-sm" onClick={() => setShapeLevel(selectedPathId, thickness)}>
-              Through
-            </button>
+            <button className="btn btn-sm" onClick={() => setShapeLevel(selectedPathId, 0)}>Face</button>
+            <button className="btn btn-sm" onClick={() => setShapeLevel(selectedPathId, thickness / 2)}>Half</button>
+            <button className="btn btn-sm" onClick={() => setShapeLevel(selectedPathId, thickness)}>Through</button>
           </div>
-
-          <p style={{ fontSize: 10, color: '#555', marginTop: 6, marginBottom: 0 }}>
-            {selectedLevel <= 0 && 'No cut — stays at material surface'}
-            {selectedLevel > 0 && selectedLevel < thickness && `Pocket ${selectedLevel}mm deep, cut inside boundary`}
-            {selectedLevel >= thickness && (selectedPathId === profileCutId
-              ? 'Profile cut — releases workpiece, cut outside'
-              : 'Through-cut — cut inside boundary')}
-          </p>
         </div>
       )}
 
-      {/* ── Quick Set — FIXED below selected shape ── */}
-      <div style={{ flexShrink: 0, marginBottom: 8 }}>
-        <div style={{ display: 'flex', gap: 4 }}>
-          <button className="btn btn-sm" onClick={() => paths.forEach((p) => { if (p.data.id !== profileCutId) setShapeLevel(p.data.id, 0); })}>
-            All Face
-          </button>
-          <button className="btn btn-sm" onClick={() => paths.forEach((p) => { if (p.data.id !== profileCutId) setShapeLevel(p.data.id, 6); })}>
-            All 6mm
-          </button>
-        </div>
-      </div>
-
       {/* ── Shapes list — SCROLLABLE ── */}
       <div style={{ flexShrink: 0, marginBottom: 4 }}>
-        <h3 style={{ margin: '0 0 4px' }}>Shapes ({paths.length})</h3>
-        <p style={{ fontSize: 10, color: '#555', margin: '0 0 4px' }}>
-          Click = deepen 2mm. Shift+click = reset.
-        </p>
+        <h3 style={{ margin: '0 0 4px' }}>Shapes</h3>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
@@ -162,13 +133,11 @@ export function DepthPanel() {
                   background: info.color,
                   border: isProfile ? '1px solid #ffaa44' : 'none',
                 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ flex: 1, fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {isProfile ? '✂ ' : ''}{isRing ? '◇ ' : ''}{shapeName}
-                  </div>
-                  <div style={{ fontSize: 9, color: '#888' }}>
-                    {info.label}
-                  </div>
+                  </span>
+                  <span style={{ fontSize: 9, color: '#888', flexShrink: 0 }}>{info.label}</span>
                 </div>
               </div>
             );
