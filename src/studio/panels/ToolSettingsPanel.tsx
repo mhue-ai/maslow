@@ -5,6 +5,17 @@ export function ToolSettingsPanel() {
   const config = useDesignStore((s) => s.toolConfig);
   const setConfig = useDesignStore((s) => s.setToolConfig);
   const paths = useDesignStore((s) => s.paths);
+  const shapeLevels = useDesignStore((s) => s.shapeLevels);
+  const material = useDesignStore((s) => s.material);
+  const profileCutId = useDesignStore((s) => s.profileCutId);
+
+  // Tabs only matter when SOMETHING goes through the material — either an
+  // explicit profile release cut or any shape with level ≥ thickness.
+  // Hide the Tabs section entirely when nothing's through, so the panel
+  // stops showing settings the current design can't use.
+  const hasThroughCut = !!profileCutId || Array.from(shapeLevels.values()).some(
+    (s) => s.level >= material.thickness
+  );
 
   if (paths.length === 0) {
     return (
@@ -87,29 +98,33 @@ export function ToolSettingsPanel() {
         <span className="unit">mm</span>
       </label>
 
-      <h3 data-tip="Small bridges of material left during through-cuts to keep the piece from falling. Cut with a hand saw after CNC finishes.">
-        Tabs (Through-cuts)
-      </h3>
+      {hasThroughCut && (
+        <>
+          <h3 data-tip="Small bridges of material left during through-cuts to keep the piece from falling. Cut with a hand saw after CNC finishes.">
+            Tabs (Through-cuts)
+          </h3>
 
-      <label data-tip="Number of tabs evenly spaced around through-cut perimeter. 4 is standard. 0 = no tabs (piece may shift during cut).">
-        Tab count
-        <input type="number" value={config.tabCount} min={0} max={12} step={1}
-          onChange={(e) => setConfig({ tabCount: Number(e.target.value) })} />
-      </label>
+          <label data-tip="Number of tabs evenly spaced around through-cut perimeter. 4 is standard. 0 = no tabs (piece may shift during cut).">
+            Tab count
+            <input type="number" value={config.tabCount} min={0} max={12} step={1}
+              onChange={(e) => setConfig({ tabCount: Number(e.target.value) })} />
+          </label>
 
-      <label data-tip="Width of each tab along the cut path. Wider = stronger hold but harder to remove. 12mm (2x bit diameter) is standard.">
-        Tab width
-        <input type="number" value={config.tabWidth} min={4} max={25} step={1}
-          onChange={(e) => setConfig({ tabWidth: Number(e.target.value) })} />
-        <span className="unit">mm</span>
-      </label>
+          <label data-tip="Width of each tab along the cut path. Wider = stronger hold but harder to remove. 12mm (2x bit diameter) is standard.">
+            Tab width
+            <input type="number" value={config.tabWidth} min={4} max={25} step={1}
+              onChange={(e) => setConfig({ tabWidth: Number(e.target.value) })} />
+            <span className="unit">mm</span>
+          </label>
 
-      <label data-tip="How tall each tab is (how much material remains). About half the material thickness keeps the piece secure.">
-        Tab height
-        <input type="number" value={config.tabHeight} min={2} max={15} step={0.5}
-          onChange={(e) => setConfig({ tabHeight: Number(e.target.value) })} />
-        <span className="unit">mm</span>
-      </label>
+          <label data-tip="How tall each tab is (how much material remains). About half the material thickness keeps the piece secure.">
+            Tab height
+            <input type="number" value={config.tabHeight} min={2} max={15} step={0.5}
+              onChange={(e) => setConfig({ tabHeight: Number(e.target.value) })} />
+            <span className="unit">mm</span>
+          </label>
+        </>
+      )}
     </div>
   );
 }

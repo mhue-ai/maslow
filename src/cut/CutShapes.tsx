@@ -13,11 +13,6 @@ export function CutShapes() {
   const cutShapeIds = useDesignStore((s) => s.cutShapeIds);
   const setCutShape = useDesignStore((s) => s.setCutShape);
   const clearCutShapes = useDesignStore((s) => s.clearCutShapes);
-  const cutDepth = useDesignStore((s) => s.cutDepth);
-  const setCutDepth = useDesignStore((s) => s.setCutDepth);
-  const toolConfig = useDesignStore((s) => s.toolConfig);
-  const setToolConfig = useDesignStore((s) => s.setToolConfig);
-  const material = useDesignStore((s) => s.material);
   const selectedPathId = useDesignStore((s) => s.selectedPathId);
   const selectPath = useDesignStore((s) => s.selectPath);
 
@@ -35,48 +30,6 @@ export function CutShapes() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <h3 style={{ margin: '0 0 6px' }}>Shapes</h3>
-
-      {/*
-        Tool width + tool depth — the two parameters Cut mode actually cares
-        about. Surfaced inline at the top of the panel so the user can tune
-        them right where they're picking which shapes to cut.
-      */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6,
-        padding: 6, marginBottom: 8, background: '#0f0f1e',
-        border: '1px solid #2a2a4a', borderRadius: 4,
-      }}>
-        <label
-          data-tip="How deep the bit cuts on each selected line. If this reaches material thickness, the cut goes all the way through and tabs auto-engage."
-          style={{ margin: 0 }}
-        >
-          Tool depth
-          <input
-            type="number"
-            value={cutDepth}
-            min={0.5}
-            max={Math.max(material.thickness, cutDepth)}
-            step={0.5}
-            onChange={(e) => setCutDepth(Number(e.target.value))}
-          />
-          <span className="unit">mm</span>
-        </label>
-        <label
-          data-tip="Diameter of the router bit. The bit's centerline follows each line, so the bit diameter is the actual width of the resulting groove or slot."
-          style={{ margin: 0 }}
-        >
-          Tool width
-          <input
-            type="number"
-            value={toolConfig.bitDiameter}
-            min={1}
-            max={25}
-            step={0.01}
-            onChange={(e) => setToolConfig({ bitDiameter: Number(e.target.value) })}
-          />
-          <span className="unit">mm</span>
-        </label>
-      </div>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
         <button className="btn btn-sm" onClick={selectAll} style={{ flex: 1 }}>Select All</button>

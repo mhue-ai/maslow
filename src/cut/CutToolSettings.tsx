@@ -4,17 +4,18 @@ import type { WorkOrigin } from '../types/design';
 /**
  * Tool Settings — Cut mode.
  *
- * The two parameters the user cares about most for Cut mode (tool width =
- * bit diameter, tool depth = cutDepth) are surfaced inline at the top of
- * CutShapes. This panel exposes the secondary machine parameters:
- * feed/plunge rate, depth-per-pass, RPM, safe height, edge clearance,
- * work origin, plus the tab knobs when the cut goes through.
+ * All Cut-mode knobs live here: work origin, tool width (= bit diameter),
+ * tool depth (= cutDepth), feed/plunge rate, depth-per-pass, RPM, safe
+ * height, edge clearance, plus the tab knobs when the cut goes through.
+ * Pocket-fill knobs (stepover, fillStrategy, stockToLeave, finishPass) are
+ * deliberately absent — Cut mode just traces lines, no fill.
  */
 export function CutToolSettings() {
   const config = useDesignStore((s) => s.toolConfig);
   const setConfig = useDesignStore((s) => s.setToolConfig);
   const paths = useDesignStore((s) => s.paths);
   const cutDepth = useDesignStore((s) => s.cutDepth);
+  const setCutDepth = useDesignStore((s) => s.setCutDepth);
   const material = useDesignStore((s) => s.material);
 
   if (paths.length === 0) {
@@ -45,10 +46,17 @@ export function CutToolSettings() {
         </select>
       </label>
 
-      <label data-tip="Diameter of your router bit. Common: 1/4&quot; = 6.35mm, 1/8&quot; = 3.175mm. In Cut mode the bit centerline follows the line — the bit diameter is the groove width.">
-        Bit diameter
+      <label data-tip="Diameter of your router bit. Common: 1/4&quot; = 6.35mm, 1/8&quot; = 3.175mm. In Cut mode the bit centerline follows each line, so this is the actual width of the resulting groove or slot.">
+        Tool width
         <input type="number" value={config.bitDiameter} min={1} max={25} step={0.01}
           onChange={(e) => setConfig({ bitDiameter: Number(e.target.value) })} />
+        <span className="unit">mm</span>
+      </label>
+
+      <label data-tip="How deep the bit cuts on each selected line. If this reaches material thickness, the cut goes all the way through and tabs auto-engage.">
+        Tool depth
+        <input type="number" value={cutDepth} min={0.5} max={Math.max(material.thickness, cutDepth)} step={0.5}
+          onChange={(e) => setCutDepth(Number(e.target.value))} />
         <span className="unit">mm</span>
       </label>
 

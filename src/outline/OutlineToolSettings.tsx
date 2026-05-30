@@ -4,16 +4,20 @@ import type { WorkOrigin } from '../types/design';
 /**
  * Tool Settings — Outline mode.
  *
- * Outline mode emits OUTLINES ONLY (relief boundaries + auto-island outlines +
- * optional outer profile). No pocketing, so we hide every pocket-specific
- * knob (fillStrategy / stepover / stockToLeave / finishPass). Tabs are only
- * meaningful when an outer Profile through-cut is set.
+ * All Outline-mode knobs live here: work origin, bit diameter (kerf
+ * compensation), relief depth, feed/plunge rate, depth-per-pass, RPM,
+ * safe height, edge clearance, plus the tab knobs when an outer profile
+ * release cut is set. Pocket-fill knobs (stepover, fillStrategy,
+ * stockToLeave, finishPass) are absent — Outline mode only emits outlines.
  */
 export function OutlineToolSettings() {
   const config = useDesignStore((s) => s.toolConfig);
   const setConfig = useDesignStore((s) => s.setToolConfig);
   const paths = useDesignStore((s) => s.paths);
   const profileCutId = useDesignStore((s) => s.profileCutId);
+  const material = useDesignStore((s) => s.material);
+  const outlineReliefDepth = useDesignStore((s) => s.outlineReliefDepth);
+  const setOutlineReliefDepth = useDesignStore((s) => s.setOutlineReliefDepth);
 
   if (paths.length === 0) {
     return (
@@ -41,10 +45,17 @@ export function OutlineToolSettings() {
         </select>
       </label>
 
-      <label data-tip="Diameter of your router bit. Common: 1/4&quot; = 6.35mm, 1/8&quot; = 3.175mm.">
+      <label data-tip="Diameter of your router bit. Common: 1/4&quot; = 6.35mm, 1/8&quot; = 3.175mm. In Outline mode this controls how far the toolpath is offset from each line (kerf compensation) so islands stay at their drawn size.">
         Bit diameter
         <input type="number" value={config.bitDiameter} min={1} max={25} step={0.01}
           onChange={(e) => setConfig({ bitDiameter: Number(e.target.value) })} />
+        <span className="unit">mm</span>
+      </label>
+
+      <label data-tip="How deep the relief cuts go. The bit traces relief and island outlines to this depth — you remove the waste in between by hand. Must be less than material thickness.">
+        Relief depth
+        <input type="number" value={outlineReliefDepth} min={0.5} max={material.thickness - 0.5} step={0.5}
+          onChange={(e) => setOutlineReliefDepth(Number(e.target.value))} />
         <span className="unit">mm</span>
       </label>
 

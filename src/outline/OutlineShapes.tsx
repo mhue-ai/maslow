@@ -23,8 +23,6 @@ export function OutlineShapes() {
   const outlineReliefIds = useDesignStore((s) => s.outlineReliefIds);
   const setOutlineRelief = useDesignStore((s) => s.setOutlineRelief);
   const clearOutlineReliefs = useDesignStore((s) => s.clearOutlineReliefs);
-  const outlineReliefDepth = useDesignStore((s) => s.outlineReliefDepth);
-  const setOutlineReliefDepth = useDesignStore((s) => s.setOutlineReliefDepth);
   const profileCutId = useDesignStore((s) => s.profileCutId);
   const setProfileCutId = useDesignStore((s) => s.setProfileCutId);
   const selectedPathId = useDesignStore((s) => s.selectedPathId);
@@ -33,7 +31,6 @@ export function OutlineShapes() {
   const svgBounds = useDesignStore((s) => s.svgBounds);
   const svgTransformOverride = useDesignStore((s) => s.svgTransformOverride);
   const toolConfig = useDesignStore((s) => s.toolConfig);
-  const setToolConfig = useDesignStore((s) => s.setToolConfig);
 
   // Auto-detected islands (Keep shapes inside a Relief). Computed async because
   // containment goes through ClipperLib (WASM).
@@ -63,51 +60,6 @@ export function OutlineShapes() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <h3 style={{ margin: '0 0 6px' }}>Shapes</h3>
-
-      {/*
-        The two parameters that actually determine whether the islands come out
-        at the right size: relief depth (how deep the bit goes) and bit
-        diameter (how much kerf-compensation offset is applied around each
-        outline). Surface them side-by-side at the top of the shapes panel so
-        the user doesn't have to bounce to Tool Settings to tune them. They
-        stay synced with the same fields in OutlineToolSettings via the store.
-      */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6,
-        padding: 6, marginBottom: 8, background: '#0f0f1e',
-        border: '1px solid #2a2a4a', borderRadius: 4,
-      }}>
-        <label
-          data-tip="How deep the relief cuts go. The bit traces relief and island outlines to this depth — you remove the waste in between by hand."
-          style={{ margin: 0 }}
-        >
-          Relief depth
-          <input
-            type="number"
-            value={outlineReliefDepth}
-            min={0.5}
-            max={material.thickness - 0.5}
-            step={0.5}
-            onChange={(e) => setOutlineReliefDepth(Number(e.target.value))}
-          />
-          <span className="unit">mm</span>
-        </label>
-        <label
-          data-tip="Diameter of the router bit. Controls how far the toolpath is offset from each outline (kerf compensation) so islands stay at their drawn size. 1/4&quot; = 6.35mm, 1/8&quot; = 3.175mm."
-          style={{ margin: 0 }}
-        >
-          Bit diameter
-          <input
-            type="number"
-            value={toolConfig.bitDiameter}
-            min={1}
-            max={25}
-            step={0.01}
-            onChange={(e) => setToolConfig({ bitDiameter: Number(e.target.value) })}
-          />
-          <span className="unit">mm</span>
-        </label>
-      </div>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
         <button className="btn btn-sm" onClick={clearOutlineReliefs} style={{ flex: 1 }}>Clear</button>
