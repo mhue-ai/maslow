@@ -7,11 +7,10 @@ import { SvgTransformPanel } from './panels/SvgTransformPanel';
 import { DepthPanel } from './panels/DepthPanel';
 import { ToolSettingsPanel } from './panels/ToolSettingsPanel';
 import { GcodeExportPanel } from './panels/GcodeExportPanel';
-import { SimulationPanel } from './panels/SimulationPanel';
 import { useDesignStore } from '../store/designStore';
 import { saveProject, loadProject } from '../store/projectIO';
 
-type ViewMode = 'design' | '3d' | 'toolpaths';
+type ViewMode = 'design' | '3d';
 
 export function DesignStudio() {
   const undo = useDesignStore((s) => s.undo);
@@ -39,14 +38,8 @@ export function DesignStudio() {
   };
 
   const handleViewMode = (mode: ViewMode) => {
-    // Reset simulation when leaving toolpaths view
-    if (viewMode === 'toolpaths' && mode !== 'toolpaths') {
-      useDesignStore.getState().simReset();
-    }
     if (mode === '3d') {
       useDesignStore.setState({ showCutPreview: true, showToolpaths: false });
-    } else if (mode === 'toolpaths') {
-      useDesignStore.setState({ showCutPreview: false, showToolpaths: true });
     } else {
       useDesignStore.setState({ showCutPreview: false, showToolpaths: false });
     }
@@ -76,20 +69,8 @@ export function DesignStudio() {
       </div>
 
       {/* Center viewport — switches between 2D design view and 3D preview */}
-      <div className="viewport" style={{ display: 'flex', flexDirection: 'column' }}>
-        <div style={{ flex: 1, position: 'relative' }}>
-          {viewMode === 'design' ? (
-            <SvgPreview2D />
-          ) : (
-            <DesignViewport />
-          )}
-        </div>
-        {/* Simulation controls — shown in toolpaths mode when gcode exists */}
-        {viewMode === 'toolpaths' && gcode && (
-          <div style={{ flexShrink: 0, padding: '4px 8px' }}>
-            <SimulationPanel />
-          </div>
-        )}
+      <div className="viewport">
+        {viewMode === 'design' ? <SvgPreview2D /> : <DesignViewport />}
       </div>
 
       <div className="panel panel-right" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -113,16 +94,12 @@ export function DesignStudio() {
             >
               3D
             </button>
-            {gcode && (
-              <button
-                className={`btn btn-sm ${viewMode === 'toolpaths' ? 'depth-btn active' : ''}`}
-                onClick={() => handleViewMode('toolpaths')}
-                style={{ flex: 1 }}
-              >
-                Paths
-              </button>
-            )}
           </div>
+          {gcode && (
+            <p style={{ fontSize: 10, color: '#666', marginTop: 6, marginBottom: 0 }}>
+              G-code ready. Switch to the <strong style={{ color: '#88bbff' }}>Visualizer</strong> tab to preview the toolpath.
+            </p>
+          )}
         </div>
       </div>
     </div>

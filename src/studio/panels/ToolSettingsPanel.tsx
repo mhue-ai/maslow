@@ -80,9 +80,9 @@ export function ToolSettingsPanel() {
         <span className="unit">mm</span>
       </label>
 
-      <label data-tip="Minimum distance from sheet edges. Maslow accuracy degrades near edges and the sled can fall off. 50mm (2&quot;) is the recommended minimum. Shown as a red dashed border on the material.">
+      <label data-tip="Minimum distance from sheet edges. Maslow belt-arc geometry degrades accuracy within ~100mm of frame edges. Community recommendation is 100mm (4&quot;) minimum. Shown as a red dashed border on the material.">
         Edge clearance
-        <input type="number" value={config.edgeClearance} min={10} max={150} step={5}
+        <input type="number" value={config.edgeClearance} min={50} max={200} step={10}
           onChange={(e) => setConfig({ edgeClearance: Number(e.target.value) })} />
         <span className="unit">mm</span>
       </label>

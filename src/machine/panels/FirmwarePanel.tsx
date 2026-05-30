@@ -75,7 +75,9 @@ export function FirmwarePanel() {
 
     try {
       const formData = new FormData();
+      // ESP3D-compatible upload: path + size hint + file
       formData.append('path', '/');
+      formData.append(`${file.name}S`, String(file.size));
       formData.append('file', file, file.name);
 
       await new Promise<void>((resolve, reject) => {
@@ -99,7 +101,9 @@ export function FirmwarePanel() {
         xhr.ontimeout = () => reject(new Error('Upload timed out'));
         xhr.timeout = 120000;
 
-        xhr.open('POST', `${uploadBase}/upload`);
+        // Upload to /files (LocalFS) — where maslow.yaml, index.html.gz, etc. live.
+        // /upload goes to a separate FS that isn't used for serving or $LocalFS/Run.
+        xhr.open('POST', `${uploadBase}/files`);
         xhr.send(formData);
       });
 

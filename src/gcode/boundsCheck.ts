@@ -12,6 +12,15 @@ export interface BoundsResult {
 const MASLOW_MAX_X = 2440; // 8 feet in mm (horizontal)
 const MASLOW_MAX_Y = 1220; // 4 feet in mm (vertical)
 
+// Sled support geometry — Maslow 4 sled is ~170mm radius around the bit.
+// These were used for an inline sled-support audit; the audit moved to
+// `sledClearanceCheck.ts`, so the constants are kept only as commented
+// reference for future tweaks (don't re-introduce as live exports without
+// a consumer or they'll trip TS6133).
+// const SLED_RADIUS = 170;
+// const SLED_BRIDGE_LIMIT = 100;
+// const SLED_DANGER_SPAN = 170;
+
 /**
  * Scan G-code for out-of-bounds moves.
  * Checks against material dimensions WITH edge clearance applied,
@@ -21,7 +30,7 @@ export function checkBounds(
   lines: string[],
   material: Material,
   workOrigin: WorkOrigin,
-  edgeClearance: number = 50
+  edgeClearance: number = 100
 ): BoundsResult {
   const warnings: string[] = [];
   let minX = Infinity, maxX = -Infinity;

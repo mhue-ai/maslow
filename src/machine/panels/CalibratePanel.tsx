@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useMachineStore } from '../../store/machineStore';
 import { send } from '../../comms/maslowSocket';
-import { loadBeltSnapshot, type BeltSnapshot } from '../../comms/maslowSocket';
+import { loadBeltSnapshot } from '../../comms/maslowSocket';
 
 interface Step {
   id: string;

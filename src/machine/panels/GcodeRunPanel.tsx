@@ -1,8 +1,36 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useDesignStore } from '../../store/designStore';
 import { useMachineStore } from '../../store/machineStore';
 import { send } from '../../comms/maslowSocket';
 import { checkBounds } from '../../gcode/boundsCheck';
+import { startJobRecord, completeJobRecord } from '../../utils/jobHistory';
+
+/**
+ * Transform G-code into a dry-run variant: all cutting Z moves forced to safe height.
+ * Keeps rapid XY moves and structure so the user sees the exact toolpath without cutting.
+ */
+function makeDryRun(gcode: string, safeHeight: number = 5): string {
+  const safeZ = `Z${safeHeight.toFixed(3)}`;
+  return gcode.split('\n').map((rawLine) => {
+    const line = rawLine.trimEnd();
+    if (!line || line.startsWith(';')) return line;
+
+    // Strip spindle on (M3/M03/M4/M04) — don't spin up for dry run
+    if (/^M0?[34]\b/.test(line)) return '; ' + line + ' (suppressed for dry run)';
+
+    // For any G0/G1 line with a Z value that's below safe height, force to safe
+    if (/^G[01]\b/.test(line) && /Z(-?[\d.]+)/.test(line)) {
+      const zMatch = line.match(/Z(-?[\d.]+)/);
+      if (zMatch) {
+        const z = parseFloat(zMatch[1]);
+        if (z < safeHeight) {
+          return line.replace(/Z-?[\d.]+/, safeZ) + ' ; dry-run: Z forced safe';
+        }
+      }
+    }
+    return line;
+  }).join('\n');
+}
 
 type JobPhase = 'idle' | 'uploading' | 'preflight' | 'ready' | 'running' | 'done';
 
@@ -23,11 +51,12 @@ interface PreflightCheck {
   detail: string;
 }
 
-// ESP32 SPIFFS/LittleFS partition is typically 1-4 MB, NOT the full flash chip.
+// ESP32-S3 LittleFS partition per MaslowCNC/Maslow_4 firmware: max_littlefs.csv = 0x200000 (2 MB).
 // ESP3D misleadingly reports the full flash chip size (e.g., "120 MB") as "total".
-// We cap at a realistic filesystem size to prevent filling the partition.
-const MAX_REALISTIC_FS_SIZE = 2 * 1024 * 1024; // 2 MB — ESP32-S3 LittleFS partition (confirmed via device)
-const RESERVED_SPACE = 200 * 1024; // Keep 200 KB reserved for system files (config, webui, preferences)
+// We cap at the real partition size to prevent filling the filesystem.
+const MAX_REALISTIC_FS_SIZE = 2 * 1024 * 1024;
+// 10% safety buffer — never write into the last 10% of available space
+const SAFETY_BUFFER_RATIO = 0.10;
 
 function parseFlashInfo(data: Record<string, unknown>): FlashInfo {
   const total = String(data.total ?? '0');
@@ -52,10 +81,23 @@ function parseFlashInfo(data: Record<string, unknown>): FlashInfo {
     totalBytes = MAX_REALISTIC_FS_SIZE;
   }
 
-  // Subtract reserved space for system files
-  const freeBytes = Math.max(0, totalBytes - usedBytes - RESERVED_SPACE);
+  // Reserve 10% of total capacity as safety buffer — never let user fill the FS
+  const safetyBuffer = Math.ceil(totalBytes * SAFETY_BUFFER_RATIO);
+  const freeBytes = Math.max(0, totalBytes - usedBytes - safetyBuffer);
 
   return { total: formatBytes(totalBytes), used, freeBytes, files };
+}
+
+/** Fetch current flash info directly from the device (not cached).
+ *  Uses /files (LocalFS/LittleFS) — the same filesystem $LocalFS/Run reads from.
+ *  Do NOT use /upload endpoint for listing — it's a different, larger virtual FS
+ *  whose files cannot be executed by $LocalFS/Run. */
+async function fetchFreshFlashInfo(): Promise<FlashInfo | null> {
+  try {
+    const resp = await fetch(`${UPLOAD_BASE}/files?path=/`, { signal: AbortSignal.timeout(5000) });
+    if (resp.ok) return parseFlashInfo(await resp.json());
+  } catch { /* ignore */ }
+  return null;
 }
 
 function formatBytes(b: number): string {
@@ -78,21 +120,21 @@ export function GcodeRunPanel() {
   const [flashInfo, setFlashInfo] = useState<FlashInfo | null>(null);
   const [flashLoading, setFlashLoading] = useState(false);
   const [checks, setChecks] = useState<PreflightCheck[]>([]);
+  const [dryRun, setDryRun] = useState(false);
+  const jobRecordIdRef = useRef<string | null>(null);
 
   const disabled = connection !== 'connected';
 
   const pollFlashInfo = useCallback(async () => {
     setFlashLoading(true);
     try {
+      // Always /files — the LocalFS partition. /upload is a different FS.
       const resp = await fetch(`${UPLOAD_BASE}/files?path=/`, { signal: AbortSignal.timeout(5000) });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       setFlashInfo(parseFlashInfo(await resp.json()));
       setError(null);
     } catch {
-      try {
-        const resp = await fetch(`${UPLOAD_BASE}/upload?path=/`, { signal: AbortSignal.timeout(5000) });
-        if (resp.ok) setFlashInfo(parseFlashInfo(await resp.json()));
-      } catch { setFlashInfo(null); }
+      setFlashInfo(null);
     } finally {
       setFlashLoading(false);
     }
@@ -197,19 +239,49 @@ export function GcodeRunPanel() {
   /** Step 1: Upload */
   const handleUpload = async () => {
     if (!gcode) return;
-    if (flashInfo && gcodeSize > flashInfo.freeBytes) {
-      setError(`Not enough space: need ${formatBytes(gcodeSize)}, only ${formatBytes(flashInfo.freeBytes)} free.`);
-      return;
-    }
+    // Use dry-run G-code if enabled
+    const payloadGcode = dryRun ? makeDryRun(gcode, 5) : gcode;
+    const payloadSize = new Blob([payloadGcode]).size;
 
+    // ALWAYS re-check free space immediately before upload (fresh, not cached).
+    // The cached flashInfo might be stale, and space can change between renders.
     setError(null);
     setPhase('uploading');
     setUploadProgress(0);
+    const fresh = await fetchFreshFlashInfo();
+    if (fresh) setFlashInfo(fresh);
+
+    // Treat the existing file we're about to overwrite as reclaimable space
+    const existingFile = fresh?.files.find((f) => f.name === JOB_FILENAME || f.name === `/${JOB_FILENAME}`);
+    const reclaimable = existingFile ? (parseInt(existingFile.size) || 0) : 0;
+    const effectiveFree = fresh ? fresh.freeBytes + reclaimable : 0;
+
+    if (fresh && payloadSize > effectiveFree) {
+      const safetyPct = Math.round(SAFETY_BUFFER_RATIO * 100);
+      setError(
+        `Not enough space for ${formatBytes(payloadSize)} ` +
+        `(${formatBytes(effectiveFree)} free after ${safetyPct}% safety buffer). ` +
+        `Delete old files in the Files tab.`
+      );
+      setPhase('idle');
+      return;
+    }
+
+    if (!fresh) {
+      setError('Could not verify free space — aborting for safety. Check connection.');
+      setPhase('idle');
+      return;
+    }
 
     try {
-      const blob = new Blob([gcode], { type: 'text/plain' });
+      const blob = new Blob([payloadGcode], { type: 'text/plain' });
       const formData = new FormData();
+      // ESP3D-compatible upload format:
+      //   path=<target directory>
+      //   <filename>S=<size in bytes>   <- REQUIRED size hint, else firmware silently discards
+      //   file=<blob with filename>
       formData.append('path', '/');
+      formData.append(`${JOB_FILENAME}S`, String(payloadSize));
       formData.append('file', blob, JOB_FILENAME);
 
       await new Promise<void>((resolve, reject) => {
@@ -226,11 +298,42 @@ export function GcodeRunPanel() {
         xhr.onerror = () => reject(new Error('Network error'));
         xhr.ontimeout = () => reject(new Error('Upload timed out'));
         xhr.timeout = 60000;
-        xhr.open('POST', `${UPLOAD_BASE}/upload`);
+        // Upload to /files (LocalFS) — NOT /upload which targets a different FS
+        // that $LocalFS/Run cannot read from.
+        xhr.open('POST', `${UPLOAD_BASE}/files`);
         xhr.send(formData);
       });
 
       setUploadProgress(100);
+
+      // VERIFY the file actually landed — the firmware sometimes returns 200
+      // without persisting. Re-read the file list and confirm our file is there.
+      const verified = await fetchFreshFlashInfo();
+      if (verified) setFlashInfo(verified);
+      const savedFile = verified?.files.find(
+        (f) => f.name === JOB_FILENAME || f.name === `/${JOB_FILENAME}`,
+      );
+      const savedSize = savedFile ? parseInt(savedFile.size) || 0 : 0;
+
+      if (!savedFile) {
+        setError(
+          'Upload reported success but the file did not appear on the device. ' +
+          'Possible firmware quirk — try again or upload a smaller file.',
+        );
+        setPhase('idle');
+        return;
+      }
+
+      // Check the file size matches (tolerate small variation in reporting units)
+      if (Math.abs(savedSize - payloadSize) > 256) {
+        setError(
+          `File on device is ${formatBytes(savedSize)} but we sent ${formatBytes(payloadSize)}. ` +
+          'Upload may have been truncated. Retry.',
+        );
+        setPhase('idle');
+        return;
+      }
+
       // Move to preflight — run checks before allowing execution
       setPhase('preflight');
     } catch (err: unknown) {
@@ -247,6 +350,13 @@ export function GcodeRunPanel() {
   /** Step 3: Run */
   const handleRun = () => {
     send(`$LocalFS/Run=${JOB_FILENAME}`);
+    // Start job history record
+    jobRecordIdRef.current = startJobRecord({
+      filename: JOB_FILENAME,
+      lineCount: gcodeLines,
+      sizeBytes: gcodeSize,
+      dryRun,
+    });
     setPhase('running');
   };
 
@@ -261,8 +371,21 @@ export function GcodeRunPanel() {
   const isRunning = machineState === 'Run' || machineState === 'Hold';
 
   if (phase === 'running' && !isRunning && machineState === 'Idle') {
+    // Complete job history record as successful
+    if (jobRecordIdRef.current) {
+      completeJobRecord(jobRecordIdRef.current, 'completed');
+      jobRecordIdRef.current = null;
+    }
     setTimeout(() => setPhase('done'), 500);
   }
+
+  // Track alarm state as error outcome
+  useEffect(() => {
+    if (phase === 'running' && machineState === 'Alarm' && jobRecordIdRef.current) {
+      completeJobRecord(jobRecordIdRef.current, 'error', 'Machine entered Alarm state');
+      jobRecordIdRef.current = null;
+    }
+  }, [machineState, phase]);
 
   const allChecksPassed = checks.length > 0 && checks.every((c) => c.pass);
   const criticalFails = checks.filter((c) => !c.pass && ['connection', 'state'].includes(c.id));
@@ -314,9 +437,40 @@ export function GcodeRunPanel() {
           {/* ── Step 1: Upload ── */}
           {(phase === 'idle' || phase === 'uploading') && (
             <>
+              {/* Dry-run toggle */}
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                marginBottom: 6,
+                padding: '6px 8px',
+                background: dryRun ? 'rgba(255,170,68,0.08)' : '#0d0d1a',
+                border: `1px solid ${dryRun ? 'rgba(255,170,68,0.3)' : '#1a1a2a'}`,
+                borderRadius: 4,
+                cursor: 'pointer',
+                fontSize: 11,
+                userSelect: 'none',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={dryRun}
+                  onChange={(e) => setDryRun(e.target.checked)}
+                  style={{ margin: 0, cursor: 'pointer' }}
+                />
+                <span style={{ color: dryRun ? '#ffaa44' : '#aaa', fontWeight: dryRun ? 600 : 400 }}>
+                  Dry Run {dryRun && '(Z stays safe, no cutting)'}
+                </span>
+              </label>
+
               <button className="btn btn-primary" disabled={disabled || phase === 'uploading' || !hasSpace}
-                onClick={handleUpload} style={{ width: '100%', marginBottom: 4 }}>
-                {phase === 'uploading' ? `Uploading... ${uploadProgress}%` : '1. Upload to Machine'}
+                onClick={handleUpload} style={{
+                  width: '100%',
+                  marginBottom: 4,
+                  background: dryRun ? '#332200' : undefined,
+                  borderColor: dryRun ? '#664400' : undefined,
+                  color: dryRun ? '#ffaa44' : undefined,
+                }}>
+                {phase === 'uploading' ? `Uploading... ${uploadProgress}%` : dryRun ? '1. Upload Dry-Run' : '1. Upload to Machine'}
               </button>
               {!hasSpace && (
                 <div style={{ fontSize: 10, color: '#ff6666', marginBottom: 4 }}>
@@ -338,7 +492,7 @@ export function GcodeRunPanel() {
                 fontSize: 11, color: '#44cc44', marginBottom: 8, padding: '4px 8px',
                 background: 'rgba(68,204,68,0.1)', border: '1px solid rgba(68,204,68,0.3)', borderRadius: 4,
               }}>
-                ✓ Uploaded {JOB_FILENAME} ({formatBytes(gcodeSize)})
+                ✓ Uploaded {JOB_FILENAME} ({formatBytes(gcodeSize)}){dryRun && ' · DRY RUN'}
               </div>
 
               <h3 style={{ margin: '8px 0 6px' }}>2. Pre-Flight Check</h3>
@@ -454,8 +608,14 @@ export function GcodeRunPanel() {
         <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
           <button className="btn btn-sm" disabled={machineState !== 'Run'} onClick={() => send('!')} style={{ flex: 1 }}>Pause</button>
           <button className="btn btn-sm" disabled={machineState !== 'Hold'} onClick={() => send('~')} style={{ flex: 1 }}>Resume</button>
-          <button className="btn btn-sm" onClick={() => { send('\x18'); setPhase('idle'); }}
-            style={{ flex: 1, background: '#4a1a1a', borderColor: '#8a2a2a' }}>Stop</button>
+          <button className="btn btn-sm" onClick={() => {
+            send('\x18');
+            if (jobRecordIdRef.current) {
+              completeJobRecord(jobRecordIdRef.current, 'aborted', 'User pressed Stop');
+              jobRecordIdRef.current = null;
+            }
+            setPhase('idle');
+          }} style={{ flex: 1, background: '#4a1a1a', borderColor: '#8a2a2a' }}>Stop</button>
         </div>
       )}
 

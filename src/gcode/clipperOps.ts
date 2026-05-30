@@ -75,7 +75,14 @@ export async function polygonUnion(a: Point[], b: Point[]): Promise<Point[][]> {
 
 /**
  * Offset a polygon inward (negative distance) or outward (positive distance).
- * Replaces the naive vertex-normal approach in profileCut.ts.
+ *
+ * Returns:
+ * - `[polygon]` (unchanged input) when Clipper fails entirely (null/undefined result) —
+ *   safe fallback for CAM that still wants SOMETHING to cut.
+ * - `[]` (empty array) when the offset is so large the polygon disappears —
+ *   this is a LEGITIMATE empty result, NOT an error. Callers must handle it
+ *   (e.g. concentric fill must stop iterating when this happens).
+ * - `[polygons]` — normal case, one or more offset polygons.
  */
 export async function offsetPolygon(polygon: Point[], distance: number): Promise<Point[][]> {
   const c = await getClipper();
@@ -83,7 +90,11 @@ export async function offsetPolygon(polygon: Point[], distance: number): Promise
     delta: Math.round(distance * SCALE),
     offsetInputs: [{ data: toClipper(polygon), joinType: ClipperLib.JoinType.Miter, endType: ClipperLib.EndType.ClosedPolygon }],
   });
-  if (!result || result.length === 0) return [polygon];
+  // null = Clipper error → fallback to original
+  if (result === null || result === undefined) return [polygon];
+  // Empty array = polygon disappeared (legitimate). DO NOT fall back to original —
+  // that would cause infinite loops in concentric clearing.
+  if (result.length === 0) return [];
   return result.map((p) => fromClipper(p));
 }
 
@@ -123,11 +134,19 @@ export async function polygonDifferenceMultiple(subject: Point[], clips: Point[]
   if (clips.length === 0) return [subject];
 
   const c = await getClipper();
+  // Use NonZero fill for clips so NESTED clip polygons UNION instead of XOR.
+  // With EvenOdd, a point inside both an outer clip and a nested inner clip
+  // counts as "in 2 clips" → excluded from the clip region → re-INCLUDED in
+  // the difference result. That produced cuts inside islands-within-islands
+  // (e.g. a diamond inside a text block, both face-depth). NonZero treats
+  // overlapping same-winding polygons as their union, giving the expected
+  // "subject minus (union of all clips)" semantics.
   const result = c.clipToPaths({
     clipType: ClipperLib.ClipType.Difference,
     subjectInputs: [{ data: toClipper(subject), closed: true }],
     clipInputs: clips.map((clip) => ({ data: toClipper(clip) })),
     subjectFillType: ClipperLib.PolyFillType.EvenOdd,
+    clipFillType: ClipperLib.PolyFillType.NonZero,
   });
   if (result === null || result === undefined) return [subject];
   if (result.length === 0) return []; // Islands cover entire pocket

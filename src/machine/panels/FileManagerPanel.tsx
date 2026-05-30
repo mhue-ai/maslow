@@ -55,9 +55,10 @@ function formatBytes(b: number): string {
   return `${(b / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// ESP3D reports full flash chip size (e.g., "120 MB") which is misleading.
-// Actual LittleFS partition is typically 1-4 MB on ESP32.
-const MAX_REALISTIC_FS = 1.5 * 1024 * 1024;
+// ESP32-S3 LittleFS partition per Maslow_4 firmware max_littlefs.csv: 0x200000 (2 MB).
+// ESP3D reports the full flash chip size which is misleading.
+const MAX_REALISTIC_FS = 2 * 1024 * 1024;
+const SAFETY_BUFFER_RATIO = 0.10;
 
 function parseStorageResponse(data: Record<string, unknown>): StorageInfo {
   const total = String(data.total ?? '0');
@@ -87,7 +88,10 @@ function parseStorageResponse(data: Record<string, unknown>): StorageInfo {
     return a.name.localeCompare(b.name);
   });
 
-  return { total, used, totalBytes, usedBytes, freeBytes: totalBytes - usedBytes, files };
+  // 10% safety buffer — never let user fill the FS
+  const safetyBuffer = Math.ceil(totalBytes * SAFETY_BUFFER_RATIO);
+  const freeBytes = Math.max(0, totalBytes - usedBytes - safetyBuffer);
+  return { total, used, totalBytes, usedBytes, freeBytes, files };
 }
 
 export function FileManagerPanel() {
@@ -104,13 +108,17 @@ export function FileManagerPanel() {
     setLoading(true);
     setError(null);
     try {
+      // Use /files (LocalFS) — the filesystem where $LocalFS/Run reads from
+      // and where web UI + config + uploaded G-code all live.
+      // /upload is a different, separate FS we do NOT want to touch.
       const resp = await fetch(`${UPLOAD_BASE}/files?path=/`, { signal: AbortSignal.timeout(5000) });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
       setStorage(parseStorageResponse(data));
     } catch {
       try {
-        const resp = await fetch(`${UPLOAD_BASE}/upload?path=/`, { signal: AbortSignal.timeout(5000) });
+        // One retry on same endpoint with longer timeout
+        const resp = await fetch(`${UPLOAD_BASE}/files?path=/`, { signal: AbortSignal.timeout(10000) });
         if (resp.ok) {
           const data = await resp.json();
           setStorage(parseStorageResponse(data));
@@ -182,7 +190,10 @@ export function FileManagerPanel() {
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#888' }}>
             <span>{formatBytes(storage.usedBytes)} used</span>
-            <span>{formatBytes(storage.freeBytes)} free / {storage.total}</span>
+            <span>{formatBytes(storage.freeBytes)} usable / {formatBytes(storage.totalBytes)}</span>
+          </div>
+          <div style={{ fontSize: 9, color: '#555', marginTop: 2 }}>
+            10% safety buffer reserved ({formatBytes(Math.ceil(storage.totalBytes * SAFETY_BUFFER_RATIO))})
           </div>
         </div>
       )}

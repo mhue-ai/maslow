@@ -25,19 +25,29 @@ export function connect(url: string): void {
     cleanup();
   }
 
+  // Cancel pending reconnects (user initiated a fresh connect)
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
   store.setConnection('connecting');
+  store.setConnectionError(null);
 
   try {
     ws = new WebSocket(url);
     store.addConsoleMessage({ timestamp: Date.now(), text: `Connecting to ${url}...`, type: 'info' });
   } catch (err) {
     store.setConnection('error');
+    store.setConnectionError(`Invalid URL: ${err instanceof Error ? err.message : String(err)}`);
     store.addConsoleMessage({ timestamp: Date.now(), text: `Failed to create WebSocket: ${err}`, type: 'error' });
     return;
   }
 
   ws.onopen = () => {
     store.setConnection('connected');
+    store.setConnectionError(null);
+    store.resetRetry();
     store.addConsoleMessage({ timestamp: Date.now(), text: `Connected to ${url}`, type: 'info' });
     lastResponseTime = Date.now();
     bufferUsed = 0;
@@ -84,9 +94,14 @@ export function connect(url: string): void {
 
   ws.onerror = () => {
     const store = useMachineStore.getState();
+    const attempt = store.retryAttempt;
+    const detail = attempt === 0
+      ? `Could not reach ${url}. Check the machine is on and on the same network.`
+      : `Cannot reach machine (attempt ${attempt + 1}).`;
+    store.setConnectionError(detail);
     store.addConsoleMessage({
       timestamp: Date.now(),
-      text: 'WebSocket error',
+      text: detail,
       type: 'error',
     });
     // Force close so onclose fires and triggers reconnect
@@ -100,19 +115,31 @@ export function connect(url: string): void {
     store.setConnection('disconnected');
     cleanup();
 
+    // Map WebSocket close codes to helpful messages
+    const codeLabel =
+      event.code === 1000 ? 'normal' :
+      event.code === 1006 ? 'abnormal — no handshake' :
+      event.code === 1011 ? 'server error' :
+      event.code === 1015 ? 'TLS handshake failed' :
+      `code ${event.code}`;
+
     store.addConsoleMessage({
       timestamp: Date.now(),
-      text: `Disconnected (code: ${event.code})`,
+      text: `Disconnected (${codeLabel})`,
       type: 'info',
     });
 
-    // Auto-reconnect after 3 seconds
+    store.incrementRetry();
+
+    // Auto-reconnect with exponential backoff (capped at 30s)
+    const backoffMs = Math.min(30000, 1000 * Math.pow(2, Math.min(store.retryAttempt, 5)));
     reconnectTimer = setTimeout(() => {
       const currentStore = useMachineStore.getState();
-      if (currentStore.connection === 'disconnected') {
+      // Only auto-reconnect if user wanted it (autoconnect) OR was connected before
+      if (currentStore.connection === 'disconnected' && currentStore.autoconnect) {
         connect(currentStore.url);
       }
-    }, 3000);
+    }, backoffMs);
   };
 }
 

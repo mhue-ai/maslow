@@ -1,16 +1,20 @@
 import { useState, useEffect } from 'react';
 import { DesignStudio } from './studio/DesignStudio';
+import { DesignLight } from './designLight/DesignLight';
+import { Visualizer } from './visualizer/Visualizer';
 import { MachineControl } from './machine/MachineControl';
+import { OnboardingModal, resetOnboarding } from './components/OnboardingModal';
 import { useDesignStore } from './store/designStore';
 import { useMachineStore } from './store/machineStore';
 import { send } from './comms/maslowSocket';
 import './App.css';
 
-type Tab = 'design' | 'machine';
+type Tab = 'design' | 'design-light' | 'visualizer' | 'machine';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('design');
   const connection = useMachineStore((s) => s.connection);
+  const gcode = useDesignStore((s) => s.gcode);
   const undo = useDesignStore((s) => s.undo);
   const redo = useDesignStore((s) => s.redo);
   const nudgeDesign = useDesignStore((s) => s.nudgeDesign);
@@ -59,6 +63,20 @@ export default function App() {
             Design Studio
           </button>
           <button
+            className={`tab-btn ${tab === 'design-light' ? 'active' : ''}`}
+            onClick={() => setTab('design-light')}
+            title="Simplified cut-only mode — every shape is cut through the material"
+          >
+            Design Light
+          </button>
+          <button
+            className={`tab-btn ${tab === 'visualizer' ? 'active' : ''}`}
+            onClick={() => setTab('visualizer')}
+            title={gcode ? 'Preview generated G-code toolpaths' : 'Generate G-code first'}
+          >
+            Visualizer{gcode && <span style={{ marginLeft: 5, fontSize: 9, color: '#44cc44' }}>●</span>}
+          </button>
+          <button
             className={`tab-btn ${tab === 'machine' ? 'active' : ''}`}
             onClick={() => setTab('machine')}
           >
@@ -67,7 +85,7 @@ export default function App() {
         </nav>
 
         {/* Floating E-stop in header when connected */}
-        {connection === 'connected' && tab === 'design' && (
+        {connection === 'connected' && (tab === 'design' || tab === 'design-light') && (
           <button
             onClick={handleEstop}
             style={{
@@ -86,10 +104,34 @@ export default function App() {
             E-STOP
           </button>
         )}
+
+        {/* Help button — opens onboarding again */}
+        <button
+          onClick={resetOnboarding}
+          title="Show welcome tour"
+          style={{
+            marginLeft: connection === 'connected' && (tab === 'design' || tab === 'design-light') ? 8 : 'auto',
+            width: 28,
+            height: 28,
+            borderRadius: '50%',
+            background: '#1a1a30',
+            border: '1px solid #2a2a4a',
+            color: '#888',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          ?
+        </button>
       </header>
       <main className="app-main">
-        {tab === 'design' ? <DesignStudio /> : <MachineControl />}
+        {tab === 'design' && <DesignStudio />}
+        {tab === 'design-light' && <DesignLight />}
+        {tab === 'visualizer' && <Visualizer />}
+        {tab === 'machine' && <MachineControl />}
       </main>
+      <OnboardingModal />
     </div>
   );
 }

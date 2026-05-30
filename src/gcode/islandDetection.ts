@@ -20,7 +20,15 @@ interface Point {
 export interface PocketRegion {
   shapeId: string;
   depth: number;
-  pocketPolygons: Point[][]; // pocket boundary minus islands
+  /** Raw outer boundary of the target shape (NOT yet island-subtracted). */
+  outer: Point[];
+  /** Island polygons that should be preserved (shapes inside the target at
+   *  a shallower depth). Subtract these AT EACH offset step of concentric
+   *  fill — not just once — so inward spirals don't cut through them. */
+  islands: Point[][];
+  /** Legacy: outer minus islands. Kept for callers that don't do island-aware
+   *  concentric fill. Newer code should use `outer` and `islands`. */
+  pocketPolygons: Point[][];
   islandIds: string[];
 }
 
@@ -50,12 +58,12 @@ export async function detectIslands(
   // Get the target shape's polygon
   const targetPath = allPaths.find((p) => p.data.id === targetShapeId);
   if (!targetPath || targetPath.shapes.length === 0) {
-    return { shapeId: targetShapeId, depth: targetDepth, pocketPolygons: [], islandIds: [] };
+    return { shapeId: targetShapeId, depth: targetDepth, outer: [], islands: [], pocketPolygons: [], islandIds: [] };
   }
 
   const targetPoly = shapeToPolygon(targetPath.shapes[0], transform);
   if (targetPoly.length < 3) {
-    return { shapeId: targetShapeId, depth: targetDepth, pocketPolygons: [targetPoly], islandIds: [] };
+    return { shapeId: targetShapeId, depth: targetDepth, outer: targetPoly, islands: [], pocketPolygons: [targetPoly], islandIds: [] };
   }
 
   // Find all shapes that are:
@@ -93,6 +101,8 @@ export async function detectIslands(
   return {
     shapeId: targetShapeId,
     depth: targetDepth,
+    outer: targetPoly,
+    islands: islandPolygons,
     pocketPolygons,
     islandIds,
   };

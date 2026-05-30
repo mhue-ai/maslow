@@ -8,9 +8,6 @@ interface SaveOptions {
   types?: { description: string; accept: Record<string, string[]> }[];
 }
 
-// Remember the last directory handle so subsequent saves go to the same place
-let lastDirHandle: FileSystemDirectoryHandle | null = null;
-
 /**
  * Save content to a user-chosen location.
  * Uses showSaveFilePicker when available (Chrome/Edge), falls back to download.
@@ -32,9 +29,8 @@ export async function saveFile(content: string | Blob, options: SaveOptions): Pr
       await writable.write(blob);
       await writable.close();
 
-      // Remember the directory for next time
-      lastDirHandle = null; // showSaveFilePicker doesn't expose directory, but it remembers
-
+      // showSaveFilePicker remembers the directory internally between calls,
+      // so we don't need to track a directory handle ourselves.
       return handle.name;
     } catch (err: unknown) {
       // User cancelled the dialog
