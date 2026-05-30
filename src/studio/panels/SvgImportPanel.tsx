@@ -2,7 +2,9 @@ import { useRef, useState } from 'react';
 import { parseSvg } from '../../svg/svgParser';
 import { svgToShapes } from '../../svg/svgToShapes';
 import { useDesignStore } from '../../store/designStore';
+import { useUiStore } from '../../store/uiStore';
 import { loadImage, traceImageToSvg, DEFAULT_TRACE } from '../../svg/imageTracer';
+import { EXAMPLES } from './examples';
 
 const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'];
 
@@ -21,6 +23,7 @@ export function SvgImportPanel() {
   const setSvgText = useDesignStore((s) => s.setSvgText);
   const setShapeRegistry = useDesignStore((s) => s.setShapeRegistry);
   const paths = useDesignStore((s) => s.paths);
+  const setIntent = useUiStore((s) => s.setIntent);
 
   /** Run an SVG string through the shared parse → convert → store flow. */
   const applySvgText = (text: string): boolean => {
@@ -110,6 +113,33 @@ export function SvgImportPanel() {
         </label>
         <input ref={inputRef} type="file" accept=".svg,image/*" onChange={handleChange} style={{ display: 'none' }} />
       </div>
+
+      {/* Starter projects — only when nothing's loaded, to get going fast. */}
+      {paths.length === 0 && (
+        <div style={{ marginTop: 6 }}>
+          <p style={{ fontSize: 10, color: '#666', margin: '0 0 4px' }}>or start from an example:</p>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {EXAMPLES.map((ex) => (
+              <button
+                key={ex.name}
+                className="btn btn-sm"
+                title={ex.blurb}
+                style={{ flex: 1, fontSize: 10 }}
+                onClick={() => {
+                  setWarning(null);
+                  setTracedImg(null);
+                  if (applySvgText(ex.svg)) {
+                    setFileName(`${ex.name} (example)`);
+                    setIntent(ex.intent);
+                  }
+                }}
+              >
+                {ex.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Image tracing controls — only when an image was imported. */}
       {tracedImg && (
