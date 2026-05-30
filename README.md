@@ -31,6 +31,50 @@ offset / boolean ops for toolpaths).
 
 ---
 
+## Run on a Raspberry Pi
+
+The app is a static site that talks to the Maslow over WebSocket straight from
+the browser, so a Pi just needs to **build it and serve the files** — no
+backend, no database. A Pi on the same network as the machine makes a tidy
+always-on controller you can open from any phone, tablet, or laptop.
+
+```bash
+git clone https://github.com/mhue-ai/maslow.git
+cd maslow
+bash scripts/install.sh            # or: PORT=80 bash scripts/install.sh
+```
+
+The installer (Raspberry Pi OS / Debian) is idempotent and:
+
+1. Installs Node.js (LTS via NodeSource) if it isn't already present.
+2. `npm ci` + `npm run build`.
+3. Installs and starts a **systemd service** (`maslow-studio`) that serves the
+   built app on boot — using `scripts/serve.mjs`, a dependency-free Node static
+   server (works fully offline).
+
+When it finishes it prints the URL, e.g. `http://<pi-ip>:8080`.
+
+| Task | Command |
+|---|---|
+| Update to latest | `bash scripts/update.sh` (pull → rebuild → restart) |
+| Service status | `sudo systemctl status maslow-studio` |
+| Live logs | `journalctl -u maslow-studio -f` |
+| Stop / start | `sudo systemctl stop\|start maslow-studio` |
+
+**Touchscreen kiosk (optional).** To auto-open the app fullscreen on a Pi with
+a display, install Chromium and launch it in kiosk mode pointed at the local
+URL — e.g. add to the desktop autostart:
+
+```
+@chromium-browser --kiosk --app=http://localhost:8080
+```
+
+> The Pi scripts are written for Raspberry Pi OS (apt + systemd) and pass
+> syntax + local server checks, but have **not** been validated on physical Pi
+> hardware yet — review before relying on them for a machine that cuts.
+
+---
+
 ## The workflow
 
 The app is a guided three-stage flow shown across the top:

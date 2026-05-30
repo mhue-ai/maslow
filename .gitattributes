@@ -1,0 +1,4 @@
+# Shell scripts and the Node server must stay LF so they run on Linux/Pi
+# (CRLF breaks bash with "bad interpreter: ...^M").
+*.sh    text eol=lf
+*.mjs   text eol=lf
