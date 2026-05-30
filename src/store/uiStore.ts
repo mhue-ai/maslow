@@ -12,8 +12,8 @@ export type Intent = 'cutout' | 'carve' | 'score';
 
 export const INTENTS: { id: Intent; label: string; glyph: string; blurb: string }[] = [
   { id: 'cutout', label: 'Cut Out', glyph: '✂', blurb: 'Cut a shape free from the sheet' },
-  { id: 'carve',  label: 'Carve',   glyph: '◳', blurb: 'Lower areas — signs, trays, reliefs' },
   { id: 'score',  label: 'Score',   glyph: '╱', blurb: 'Run the bit along the lines' },
+  { id: 'carve',  label: 'Carve',   glyph: '◳', blurb: 'Lower areas — signs, trays, reliefs' },
 ];
 
 interface UiState {
