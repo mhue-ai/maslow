@@ -61,6 +61,8 @@ interface DesignState {
   // Tool config
   toolConfig: ToolConfig;
   setToolConfig: (c: Partial<ToolConfig>) => void;
+  /** Apply a bit preset: sets diameter + stepover and clamps depth/pass. */
+  applyBit: (diameter: number, stepover: number, maxDepthPerPass: number) => void;
 
   // Profile cut — outermost shape, always last operation (auto-set on SVG import)
   profileCutId: string | null;
@@ -268,6 +270,19 @@ export const useDesignStore = create<DesignState>((set, get) => ({
   setToolConfig: (c) => {
     get().pushHistory();
     set((s) => ({ toolConfig: { ...s.toolConfig, ...c } }));
+  },
+  applyBit: (diameter, stepover, maxDepthPerPass) => {
+    get().pushHistory();
+    set((s) => ({
+      toolConfig: {
+        ...s.toolConfig,
+        bitDiameter: diameter,
+        stepover,
+        // Never bite deeper than the bit can handle, but don't increase a
+        // material preset's gentler depth/pass either.
+        depthPerPass: Math.min(s.toolConfig.depthPerPass, maxDepthPerPass),
+      },
+    }));
   },
 
   gcode: null,

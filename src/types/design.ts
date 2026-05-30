@@ -116,6 +116,33 @@ export interface MaterialPreset {
   depthPerPass: number;
 }
 
+/**
+ * Router bit presets. The maker picks one of these instead of typing a bit
+ * diameter + stepover. Diameter is the slot/kerf width; stepover is the
+ * fraction of diameter the tool overlaps between pocket passes (smaller bits
+ * use a smaller fraction to keep chip load reasonable). `maxDepthPerPass` caps
+ * how deep a single pass may go for this bit — a flat endmill shouldn't bite
+ * more than ~its own diameter per pass in wood.
+ */
+export interface BitPreset {
+  name: string;        // full label, e.g. '1/4" straight (6.35mm)'
+  short: string;       // chip label, e.g. '1/4"'
+  diameter: number;    // mm
+  stepover: number;    // fraction of diameter (0.35 = 35%)
+  maxDepthPerPass: number; // mm — clamp depth/pass to this for the bit
+  blurb: string;       // one-line maker-facing description
+}
+
+export const BIT_PRESETS: BitPreset[] = [
+  { name: '1/2" straight (12.7mm)',   short: '1/2"',  diameter: 12.7,   stepover: 0.40, maxDepthPerPass: 6,   blurb: 'Fast removal, coarse detail' },
+  { name: '1/4" straight (6.35mm)',   short: '1/4"',  diameter: 6.35,   stepover: 0.35, maxDepthPerPass: 4,   blurb: 'General purpose — recommended' },
+  { name: '1/8" straight (3.18mm)',   short: '1/8"',  diameter: 3.175,  stepover: 0.30, maxDepthPerPass: 2,   blurb: 'Fine detail, slower going' },
+  { name: '1/16" straight (1.59mm)',  short: '1/16"', diameter: 1.5875, stepover: 0.25, maxDepthPerPass: 1,   blurb: 'Very fine detail — fragile bit' },
+];
+
+/** The bit we default to / treat as "recommended". */
+export const DEFAULT_BIT = BIT_PRESETS[1]; // 1/4"
+
 export const BUILT_IN_PRESETS: MaterialPreset[] = [
   // Plywood — community-tuned feeds (1500-1800 mm/min), 16k RPM to prevent burning
   { name: '1/8" Plywood (4x8)',  width: 2440, height: 1220, thickness: 3.2,  feedRate: 1800, plungeRate: 400, rpm: 16000, depthPerPass: 1.5 },
